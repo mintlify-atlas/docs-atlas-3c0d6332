@@ -1,0 +1,155 @@
+---
+title: 'pfcount'
+description: 'Get the approximate cardinality of a HyperLogLog'
+---
+
+## Description
+
+Returns the approximated cardinality computed by the HyperLogLog data structure stored at the specified variable(s). When called with multiple keys, returns the approximated cardinality of the union of the HyperLogLogs.
+
+## Syntax
+
+```typescript
+redis.pfcount(...keys: string[]): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="keys" type="string[]" required>
+  One or more HyperLogLog keys to count
+</ParamField>
+
+## Returns
+
+<ResponseField name="count" type="number">
+  The approximate number of unique elements. When multiple keys are provided, returns the cardinality of the union.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Add elements
+await redis.pfadd('visitors', 'user1', 'user2', 'user3');
+
+// Count unique elements
+const count = await redis.pfcount('visitors');
+console.log(count); // ~3
+```
+
+### Count Union of Multiple HyperLogLogs
+
+```typescript
+// Track visitors for different pages
+await redis.pfadd('page:home', 'user1', 'user2', 'user3');
+await redis.pfadd('page:about', 'user2', 'user3', 'user4');
+
+// Count visitors to home page
+const homeVisitors = await redis.pfcount('page:home');
+console.log('Home visitors:', homeVisitors); // ~3
+
+// Count total unique visitors across both pages
+const totalVisitors = await redis.pfcount('page:home', 'page:about');
+console.log('Total unique visitors:', totalVisitors); // ~4 (user1, user2, user3, user4)
+```
+
+### Daily/Monthly Active Users
+
+```typescript
+class ActiveUsers {
+  constructor(private redis: Redis) {}
+  
+  async trackActive(userId: string, date: string) {
+    const dayKey = `dau:${date}`;
+    const monthKey = `mau:${date.substring(0, 7)}`; // YYYY-MM
+    
+    await this.redis.pfadd(dayKey, userId);
+    await this.redis.pfadd(monthKey, userId);
+  }
+  
+  async getDailyActive(date: string): Promise<number> {
+    return await this.redis.pfcount(`dau:${date}`);
+  }
+  
+  async getMonthlyActive(month: string): Promise<number> {
+    return await this.redis.pfcount(`mau:${month}`);
+  }
+}
+
+const tracker = new ActiveUsers(redis);
+
+// Track users
+await tracker.trackActive('user1', '2024-03-01');
+await tracker.trackActive('user2', '2024-03-01');
+await tracker.trackActive('user1', '2024-03-02');
+
+const dau = await tracker.getDailyActive('2024-03-01');
+const mau = await tracker.getMonthlyActive('2024-03');
+
+console.log('DAU:', dau);
+console.log('MAU:', mau);
+```
+
+### Analytics Dashboard
+
+```typescript
+interface Analytics {
+  uniqueVisitors: number;
+  uniqueIPs: number;
+  uniqueProducts: number;
+}
+
+async function getAnalytics(date: string): Promise<Analytics> {
+  const [visitors, ips, products] = await Promise.all([
+    redis.pfcount(`visitors:${date}`),
+    redis.pfcount(`ips:${date}`),
+    redis.pfcount(`products:viewed:${date}`)
+  ]);
+  
+  return {
+    uniqueVisitors: visitors,
+    uniqueIPs: ips,
+    uniqueProducts: products
+  };
+}
+
+const analytics = await getAnalytics('2024-03-01');
+console.log(analytics);
+```
+
+## Accuracy
+
+<Info>
+HyperLogLog provides approximate counts with:
+- **Standard error**: 0.81%
+- **Accuracy**: ~99.19%
+- **Memory**: Fixed 12 KB per HyperLogLog
+
+For 1 million unique elements, the error is typically within ±8,100 elements.
+</Info>
+
+## Use Cases
+
+- **DAU/MAU tracking**: Daily and monthly active users
+- **Unique visitors**: Website traffic analytics
+- **Content reach**: Unique views for posts/videos
+- **Ad impressions**: Unique users who saw an ad
+- **IoT sensors**: Unique device counts
+
+## Related Commands
+
+- [pfadd](/api/commands/pfadd) - Add elements to HyperLogLog
+- [pfmerge](/api/commands/pfmerge) - Merge multiple HyperLogLogs
+- [scard](/api/commands/scard) - Count elements in a set (exact)
+
+## Redis Documentation
+
+For more information, see the [Redis PFCOUNT documentation](https://redis.io/commands/pfcount).

@@ -1,0 +1,174 @@
+---
+title: 'pfadd'
+description: 'Add elements to a HyperLogLog'
+---
+
+## Description
+
+Adds all the element arguments to the HyperLogLog data structure stored at the variable name specified as first argument. HyperLogLog is a probabilistic data structure used to count unique elements with minimal memory usage.
+
+<Info>
+HyperLogLog can count unique elements with a standard error of 0.81% using only 12 KB of memory, even for billions of elements.
+</Info>
+
+## Syntax
+
+```typescript
+redis.pfadd(key: string, ...elements: string[]): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the HyperLogLog
+</ParamField>
+
+<ParamField path="elements" type="string[]" required>
+  One or more elements to add to the HyperLogLog
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="number">
+  - `1` if the HyperLogLog was modified
+  - `0` if the HyperLogLog was not modified (all elements were already present)
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Add elements to HyperLogLog
+const result1 = await redis.pfadd('visitors', 'user1', 'user2', 'user3');
+console.log(result1); // 1 (HyperLogLog was modified)
+
+// Add duplicate elements
+const result2 = await redis.pfadd('visitors', 'user1', 'user2');
+console.log(result2); // 0 (no new unique elements)
+
+// Get the count
+const count = await redis.pfcount('visitors');
+console.log(count); // ~3 (approximate count)
+```
+
+### Track Unique Visitors
+
+```typescript
+// Track unique page views per day
+async function trackPageView(page: string, userId: string, date: string) {
+  const key = `pageviews:${page}:${date}`;
+  await redis.pfadd(key, userId);
+  
+  // Set expiration to 90 days
+  await redis.expire(key, 90 * 24 * 60 * 60);
+}
+
+// Get unique visitor count
+async function getUniqueVisitors(page: string, date: string): Promise<number> {
+  const key = `pageviews:${page}:${date}`;
+  return await redis.pfcount(key);
+}
+
+// Usage
+await trackPageView('/home', 'user123', '2024-03-01');
+await trackPageView('/home', 'user456', '2024-03-01');
+await trackPageView('/home', 'user123', '2024-03-01'); // Duplicate
+
+const visitors = await getUniqueVisitors('/home', '2024-03-01');
+console.log(`Unique visitors: ${visitors}`); // ~2
+```
+
+### Real-Time Analytics
+
+```typescript
+class UniqueCounter {
+  constructor(private redis: Redis) {}
+  
+  async add(metric: string, value: string): Promise<void> {
+    await this.redis.pfadd(`unique:${metric}`, value);
+  }
+  
+  async count(metric: string): Promise<number> {
+    return await this.redis.pfcount(`unique:${metric}`);
+  }
+  
+  async reset(metric: string): Promise<void> {
+    await this.redis.del(`unique:${metric}`);
+  }
+}
+
+const counter = new UniqueCounter(redis);
+
+// Track unique IPs
+await counter.add('ips:2024-03-01', '192.168.1.1');
+await counter.add('ips:2024-03-01', '10.0.0.1');
+await counter.add('ips:2024-03-01', '192.168.1.1'); // Duplicate
+
+const uniqueIps = await counter.count('ips:2024-03-01');
+console.log(`Unique IPs: ${uniqueIps}`);
+```
+
+### E-commerce Analytics
+
+```typescript
+// Track unique product views
+async function trackProductView(productId: string, userId: string) {
+  const key = `product:${productId}:viewers`;
+  await redis.pfadd(key, userId);
+}
+
+// Get unique viewer count
+async function getProductViewers(productId: string): Promise<number> {
+  const key = `product:${productId}:viewers`;
+  return await redis.pfcount(key);
+}
+
+// Track multiple products
+await trackProductView('prod-123', 'user-1');
+await trackProductView('prod-123', 'user-2');
+await trackProductView('prod-123', 'user-1'); // Duplicate view
+
+const viewers = await getProductViewers('prod-123');
+console.log(`Unique viewers: ${viewers}`);
+```
+
+## Memory Efficiency
+
+<Info>
+Comparing memory usage for counting 1 million unique elements:
+- **Set**: ~100 MB (stores all elements)
+- **HyperLogLog**: 12 KB (constant memory)
+- **Accuracy**: 99.19% (0.81% standard error)
+</Info>
+
+## Use Cases
+
+- **Unique visitor counting**: Track unique users/IPs with minimal memory
+- **Real-time analytics**: Count unique events at scale
+- **A/B testing**: Track unique users in each variant
+- **Social media**: Count unique viewers/interactions
+- **IoT**: Count unique devices/sensors
+
+## Important Notes
+
+<Warning>
+HyperLogLog provides approximate counts, not exact counts. The standard error is 0.81%. For exact counting, use Sets instead.
+</Warning>
+
+## Related Commands
+
+- [pfcount](/api/commands/pfcount) - Get the approximate cardinality
+- [pfmerge](/api/commands/pfmerge) - Merge multiple HyperLogLogs
+- [sadd](/api/commands/sadd) - Add to a set (exact counting)
+
+## Redis Documentation
+
+For more information, see the [Redis PFADD documentation](https://redis.io/commands/pfadd).

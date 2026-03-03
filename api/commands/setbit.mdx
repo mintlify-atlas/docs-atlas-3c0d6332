@@ -1,0 +1,198 @@
+---
+title: 'setbit'
+description: 'Set or clear the bit at offset in the string value'
+---
+
+## Description
+
+Sets or clears the bit at offset in the string value stored at key. The bit is either set or cleared depending on value, which can be either 0 or 1.
+
+## Syntax
+
+```typescript
+redis.setbit(
+  key: string,
+  offset: number,
+  value: 0 | 1
+): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the bitmap
+</ParamField>
+
+<ParamField path="offset" type="number" required>
+  The bit offset (0-based)
+</ParamField>
+
+<ParamField path="value" type="0 | 1" required>
+  The bit value to set (0 or 1)
+</ParamField>
+
+## Returns
+
+<ResponseField name="previousValue" type="number">
+  The original bit value stored at offset (0 or 1)
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set bit at offset 7 to 1
+const previous = await redis.setbit('mykey', 7, 1);
+console.log(previous); // 0 (was not set)
+
+// Set it again
+const previous2 = await redis.setbit('mykey', 7, 1);
+console.log(previous2); // 1 (was already set)
+
+// Clear the bit
+const previous3 = await redis.setbit('mykey', 7, 0);
+console.log(previous3); // 1 (was set)
+```
+
+### Daily Active Users Tracking
+
+```typescript
+// Track if a user was active on a specific day
+async function markUserActive(
+  userId: number,
+  date: string
+): Promise<void> {
+  const key = `active:${date}`;
+  await redis.setbit(key, userId, 1);
+  
+  // Set expiration to 90 days
+  await redis.expire(key, 90 * 24 * 60 * 60);
+}
+
+// Check if user was active
+async function wasUserActive(
+  userId: number,
+  date: string
+): Promise<boolean> {
+  const key = `active:${date}`;
+  const bit = await redis.getbit(key, userId);
+  return bit === 1;
+}
+
+// Usage
+await markUserActive(123, '2024-03-01');
+const active = await wasUserActive(123, '2024-03-01');
+console.log('User 123 was active:', active); // true
+```
+
+### Feature Flags
+
+```typescript
+class FeatureFlags {
+  constructor(private redis: Redis) {}
+  
+  async enableFeature(userId: number, featureId: string): Promise<void> {
+    const key = `features:${featureId}`;
+    await redis.setbit(key, userId, 1);
+  }
+  
+  async disableFeature(userId: number, featureId: string): Promise<void> {
+    const key = `features:${featureId}`;
+    await redis.setbit(key, userId, 0);
+  }
+  
+  async hasFeature(userId: number, featureId: string): Promise<boolean> {
+    const key = `features:${featureId}`;
+    const enabled = await redis.getbit(key, userId);
+    return enabled === 1;
+  }
+}
+
+const flags = new FeatureFlags(redis);
+
+// Enable dark mode for user 42
+await flags.enableFeature(42, 'dark-mode');
+
+// Check if enabled
+const hasDarkMode = await flags.hasFeature(42, 'dark-mode');
+console.log(hasDarkMode); // true
+```
+
+### Permissions System
+
+```typescript
+// Use bits to represent permissions (0-31 = different permissions)
+const PERMISSIONS = {
+  READ: 0,
+  WRITE: 1,
+  DELETE: 2,
+  ADMIN: 3,
+};
+
+async function grantPermission(
+  userId: number,
+  permission: number
+): Promise<void> {
+  const key = `permissions:${userId}`;
+  await redis.setbit(key, permission, 1);
+}
+
+async function revokePermission(
+  userId: number,
+  permission: number
+): Promise<void> {
+  const key = `permissions:${userId}`;
+  await redis.setbit(key, permission, 0);
+}
+
+async function hasPermission(
+  userId: number,
+  permission: number
+): Promise<boolean> {
+  const key = `permissions:${userId}`;
+  const bit = await redis.getbit(key, permission);
+  return bit === 1;
+}
+
+// Grant permissions
+await grantPermission(100, PERMISSIONS.READ);
+await grantPermission(100, PERMISSIONS.WRITE);
+
+// Check permission
+const canWrite = await hasPermission(100, PERMISSIONS.WRITE);
+console.log('Can write:', canWrite); // true
+
+const canDelete = await hasPermission(100, PERMISSIONS.DELETE);
+console.log('Can delete:', canDelete); // false
+```
+
+## Memory Efficiency
+
+<Info>
+Bitmaps are extremely memory-efficient for tracking boolean flags for millions of users. Each user takes only 1 bit, so you can store 8 million users in just 1 MB.
+</Info>
+
+## Use Cases
+
+- **User activity tracking**: Daily/monthly active users
+- **Feature flags**: Per-user feature toggles
+- **Permissions**: Compact permission bits
+- **Real-time analytics**: Track events with minimal memory
+- **A/B testing**: Assign users to test groups
+
+## Related Commands
+
+- [getbit](/api/commands/getbit) - Get a bit value
+- [bitcount](/api/commands/bitcount) - Count set bits
+
+## Redis Documentation
+
+For more information, see the [Redis SETBIT documentation](https://redis.io/commands/setbit).

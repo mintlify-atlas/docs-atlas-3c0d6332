@@ -1,0 +1,148 @@
+---
+title: 'bitcount'
+description: 'Count the number of set bits in a string'
+---
+
+## Description
+
+Count the number of set bits (population counting) in a string. By default, all the bytes contained in the string are examined. It is possible to specify the counting operation only in a specific interval.
+
+## Syntax
+
+```typescript
+redis.bitcount(
+  key: string,
+  start?: number,
+  end?: number
+): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the string to count bits in
+</ParamField>
+
+<ParamField path="start" type="number">
+  The starting byte offset (can be negative to count from the end)
+</ParamField>
+
+<ParamField path="end" type="number">
+  The ending byte offset (can be negative to count from the end)
+</ParamField>
+
+## Returns
+
+<ResponseField name="count" type="number">
+  The number of bits set to 1
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set some bits
+await redis.setbit('mykey', 7, 1);
+await redis.setbit('mykey', 15, 1);
+await redis.setbit('mykey', 23, 1);
+
+// Count all set bits
+const count = await redis.bitcount('mykey');
+console.log(count); // 3
+```
+
+### Count Bits in Range
+
+```typescript
+// Set a string value
+await redis.set('text', 'hello');
+
+// Count bits in entire string
+const totalBits = await redis.bitcount('text');
+console.log('Total bits:', totalBits);
+
+// Count bits in first byte only
+const firstByte = await redis.bitcount('text', 0, 0);
+console.log('Bits in first byte:', firstByte);
+
+// Count bits in last two bytes
+const lastTwo = await redis.bitcount('text', -2, -1);
+console.log('Bits in last two bytes:', lastTwo);
+```
+
+### User Activity Tracking
+
+```typescript
+// Track daily active users (each bit = one user ID)
+const date = '2024-03-01';
+const key = `active:${date}`;
+
+// Mark users as active (user IDs 1, 5, 10, 42)
+await redis.setbit(key, 1, 1);
+await redis.setbit(key, 5, 1);
+await redis.setbit(key, 10, 1);
+await redis.setbit(key, 42, 1);
+
+// Count daily active users
+const dau = await redis.bitcount(key);
+console.log(`Daily active users: ${dau}`);
+```
+
+### Feature Usage Analytics
+
+```typescript
+interface FeatureUsage {
+  featureId: string;
+  userId: number;
+}
+
+// Track which users used a feature
+async function markFeatureUsed(featureId: string, userId: number) {
+  const key = `feature:${featureId}:users`;
+  await redis.setbit(key, userId, 1);
+}
+
+// Get count of users who used the feature
+async function getFeatureUsers(featureId: string): Promise<number> {
+  const key = `feature:${featureId}:users`;
+  return await redis.bitcount(key);
+}
+
+// Usage
+await markFeatureUsed('dark-mode', 100);
+await markFeatureUsed('dark-mode', 200);
+await markFeatureUsed('dark-mode', 300);
+
+const users = await getFeatureUsers('dark-mode');
+console.log(`Users using dark mode: ${users}`);
+```
+
+## Use Cases
+
+- **Analytics**: Count unique users/events with memory-efficient bitmaps
+- **Feature flags**: Track which users have features enabled
+- **Attendance**: Mark and count attendance/participation
+- **A/B testing**: Track which users are in which test group
+
+## Performance Notes
+
+<Info>
+Bitcount is highly optimized and can count bits in large strings very efficiently. It's much more memory-efficient than storing sets for tracking unique items.
+</Info>
+
+## Related Commands
+
+- [setbit](/api/commands/setbit) - Set a bit at a specific offset
+- [getbit](/api/commands/getbit) - Get a bit value at a specific offset
+
+## Redis Documentation
+
+For more information, see the [Redis BITCOUNT documentation](https://redis.io/commands/bitcount).

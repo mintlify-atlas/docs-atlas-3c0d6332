@@ -1,0 +1,168 @@
+---
+title: 'pfmerge'
+description: 'Merge multiple HyperLogLog values into one'
+---
+
+## Description
+
+Merge multiple HyperLogLog values into a single HyperLogLog. The resulting HyperLogLog will approximate the cardinality of the union of all the source HyperLogLogs.
+
+## Syntax
+
+```typescript
+redis.pfmerge(
+  destkey: string,
+  ...sourcekeys: string[]
+): Promise<'OK'>
+```
+
+## Parameters
+
+<ParamField path="destkey" type="string" required>
+  The destination key where the merged HyperLogLog will be stored
+</ParamField>
+
+<ParamField path="sourcekeys" type="string[]" required>
+  One or more source HyperLogLog keys to merge
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="'OK'">
+  Returns `'OK'` on success
+</ResponseField>
+
+## Examples
+
+### Basic Merge
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Create two HyperLogLogs
+await redis.pfadd('hll1', 'user1', 'user2', 'user3');
+await redis.pfadd('hll2', 'user3', 'user4', 'user5');
+
+// Merge them
+await redis.pfmerge('hll-merged', 'hll1', 'hll2');
+
+// Count unique elements in merged HLL
+const count = await redis.pfcount('hll-merged');
+console.log(count); // ~5 (user1, user2, user3, user4, user5)
+```
+
+### Weekly/Monthly Aggregation
+
+```typescript
+// Merge daily active users into weekly active users
+async function aggregateWeeklyActive(week: string, dates: string[]) {
+  const weekKey = `wau:${week}`;
+  const dailyKeys = dates.map(date => `dau:${date}`);
+  
+  await redis.pfmerge(weekKey, ...dailyKeys);
+  
+  return await redis.pfcount(weekKey);
+}
+
+// Add daily data
+await redis.pfadd('dau:2024-03-01', 'user1', 'user2');
+await redis.pfadd('dau:2024-03-02', 'user2', 'user3');
+await redis.pfadd('dau:2024-03-03', 'user3', 'user4');
+
+// Aggregate into weekly
+const wau = await aggregateWeeklyActive('2024-W09', [
+  '2024-03-01',
+  '2024-03-02',
+  '2024-03-03'
+]);
+
+console.log('Weekly active users:', wau); // ~4
+```
+
+### Multi-Region Analytics
+
+```typescript
+class MultiRegionAnalytics {
+  constructor(private redis: Redis) {}
+  
+  async trackRegional(region: string, userId: string) {
+    const key = `users:${region}`;
+    await this.redis.pfadd(key, userId);
+  }
+  
+  async getRegionalCount(region: string): Promise<number> {
+    return await this.redis.pfcount(`users:${region}`);
+  }
+  
+  async getGlobalCount(regions: string[]): Promise<number> {
+    const regionKeys = regions.map(r => `users:${r}`);
+    await this.redis.pfmerge('users:global', ...regionKeys);
+    return await this.redis.pfcount('users:global');
+  }
+}
+
+const analytics = new MultiRegionAnalytics(redis);
+
+// Track users in different regions
+await analytics.trackRegional('us-east', 'user1');
+await analytics.trackRegional('us-west', 'user2');
+await analytics.trackRegional('eu', 'user1'); // Same user in different region
+
+// Get global unique users
+const globalUsers = await analytics.getGlobalCount(['us-east', 'us-west', 'eu']);
+console.log('Global unique users:', globalUsers); // ~2
+```
+
+### Campaign Analytics
+
+```typescript
+// Merge multiple campaign audiences
+async function getCombinedReach(campaigns: string[]): Promise<number> {
+  const campaignKeys = campaigns.map(c => `campaign:${c}:viewers`);
+  const mergedKey = `campaign:combined:${campaigns.join('+')}`;
+  
+  await redis.pfmerge(mergedKey, ...campaignKeys);
+  
+  // Set expiration on merged result
+  await redis.expire(mergedKey, 3600); // 1 hour
+  
+  return await redis.pfcount(mergedKey);
+}
+
+// Track campaign viewers
+await redis.pfadd('campaign:spring:viewers', 'user1', 'user2', 'user3');
+await redis.pfadd('campaign:summer:viewers', 'user3', 'user4', 'user5');
+await redis.pfadd('campaign:fall:viewers', 'user5', 'user6');
+
+// Get combined reach across all campaigns
+const totalReach = await getCombinedReach(['spring', 'summer', 'fall']);
+console.log('Combined campaign reach:', totalReach); // ~6
+```
+
+## Use Cases
+
+- **Time aggregation**: Merge daily into weekly/monthly metrics
+- **Geographic rollup**: Combine regional data into global metrics
+- **Campaign analysis**: Calculate combined audience reach
+- **A/B test overlap**: Find users exposed to multiple variants
+- **Multi-platform tracking**: Merge user activity across platforms
+
+## Performance Notes
+
+<Info>
+`PFMERGE` is efficient because HyperLogLogs use a fixed 12 KB of memory regardless of the number of unique elements. Merging is a constant-time operation.
+</Info>
+
+## Related Commands
+
+- [pfadd](/api/commands/pfadd) - Add elements to HyperLogLog
+- [pfcount](/api/commands/pfcount) - Count unique elements
+
+## Redis Documentation
+
+For more information, see the [Redis PFMERGE documentation](https://redis.io/commands/pfmerge).

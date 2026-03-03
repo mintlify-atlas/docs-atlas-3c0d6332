@@ -1,0 +1,112 @@
+---
+title: 'getdel'
+description: 'Get the value of a key and delete it'
+---
+
+## Description
+
+Get the value of key and delete the key atomically. This command is similar to `GET` followed by `DEL`, but is atomic.
+
+## Syntax
+
+```typescript
+redis.getdel<TData>(key: string): Promise<TData | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to retrieve and delete
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="TData" type="type" default="string">
+  The expected type of the returned data
+</ParamField>
+
+## Returns
+
+<ResponseField name="value" type="TData | null">
+  The value of the key, or `null` if the key does not exist. The key is deleted after retrieval.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set a value
+await redis.set('session:abc123', 'user-data');
+
+// Get and delete atomically
+const data = await redis.getdel('session:abc123');
+console.log(data); // 'user-data'
+
+// Key no longer exists
+const check = await redis.get('session:abc123');
+console.log(check); // null
+```
+
+### One-Time Tokens
+
+```typescript
+interface Token {
+  userId: string;
+  expires: number;
+}
+
+// Store a one-time use token
+await redis.set<Token>('token:xyz', {
+  userId: '123',
+  expires: Date.now() + 3600000
+});
+
+// Consume the token (get and delete)
+const token = await redis.getdel<Token>('token:xyz');
+
+if (token && token.expires > Date.now()) {
+  console.log('Token valid for user:', token.userId);
+  // Token is now deleted and cannot be reused
+} else {
+  console.log('Token invalid or expired');
+}
+```
+
+### Cache Pattern
+
+```typescript
+// Get cached value and remove it
+const cachedResult = await redis.getdel('temp:calculation:123');
+
+if (cachedResult) {
+  console.log('Using cached result:', cachedResult);
+} else {
+  console.log('Cache miss, computing...');
+  // Compute and cache result
+}
+```
+
+## Use Cases
+
+- **One-time tokens**: Password reset tokens, email verification codes
+- **Temporary data**: Session data that should only be read once
+- **Task queues**: Atomic retrieval and removal of tasks
+- **Rate limiting**: Consume rate limit tokens
+
+## Related Commands
+
+- [get](/api/commands/get) - Get the value of a key without deleting
+- [getex](/api/commands/getex) - Get the value and set expiration
+- [del](/api/commands/del) - Delete keys
+
+## Redis Documentation
+
+For more information, see the [Redis GETDEL documentation](https://redis.io/commands/getdel).

@@ -1,0 +1,351 @@
+---
+title: Quick Start
+description: Get started with Upstash Redis in under 5 minutes
+---
+
+Get up and running with Upstash Redis in under 5 minutes. This guide will walk you through creating a Redis database, installing the SDK, and executing your first commands.
+
+## Prerequisites
+
+Before you begin, you'll need:
+
+- A free [Upstash account](https://console.upstash.com)
+- Node.js 14 or higher (or Bun/Deno)
+- A code editor
+
+## Step 1: Create a Redis database
+
+<Steps>
+  <Step title="Sign up for Upstash">
+    Go to [console.upstash.com](https://console.upstash.com) and create a free account.
+  </Step>
+  
+  <Step title="Create a new database">
+    Click **Create Database** in the Upstash Console.
+    
+    - Choose a name for your database
+    - Select a region close to your users
+    - Click **Create**
+  </Step>
+  
+  <Step title="Copy your credentials">
+    After creation, you'll see your database details. Copy:
+    
+    - **UPSTASH_REDIS_REST_URL** - Your database REST URL
+    - **UPSTASH_REDIS_REST_TOKEN** - Your authentication token
+    
+    <Tip>
+    Click the `.env` button in the console to copy both values in the correct format.
+    </Tip>
+  </Step>
+</Steps>
+
+## Step 2: Install the SDK
+
+Install the Upstash Redis SDK using your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install @upstash/redis
+```
+
+```bash pnpm
+pnpm add @upstash/redis
+```
+
+```bash yarn
+yarn add @upstash/redis
+```
+
+```bash bun
+bun add @upstash/redis
+```
+</CodeGroup>
+
+## Step 3: Set up environment variables
+
+Create a `.env` file in your project root and add your credentials:
+
+```bash .env
+UPSTASH_REDIS_REST_URL="your_rest_url_here"
+UPSTASH_REDIS_REST_TOKEN="your_token_here"
+```
+
+<Warning>
+Never commit your `.env` file to version control. Add it to your `.gitignore` file.
+</Warning>
+
+## Step 4: Write your first code
+
+Create a new file `index.ts` (or `index.js`) and add:
+
+```typescript index.ts
+import { Redis } from '@upstash/redis';
+
+// Create a Redis client from environment variables
+const redis = Redis.fromEnv();
+
+async function main() {
+  // Set a value
+  await redis.set('greeting', 'Hello, Upstash!');
+  
+  // Get the value
+  const greeting = await redis.get('greeting');
+  console.log(greeting); // Output: Hello, Upstash!
+  
+  // Increment a counter
+  const views = await redis.incr('page-views');
+  console.log(`Page views: ${views}`);
+  
+  // Set a value with expiration (60 seconds)
+  await redis.set('session', { userId: '123' }, { ex: 60 });
+  
+  // Work with hashes
+  await redis.hset('user:1', {
+    name: 'Alice',
+    email: 'alice@example.com',
+    age: '30'
+  });
+  
+  const user = await redis.hgetall('user:1');
+  console.log('User:', user);
+}
+
+main().catch(console.error);
+```
+
+## Step 5: Run your code
+
+Execute your script:
+
+<CodeGroup>
+```bash Node.js with tsx
+npx tsx index.ts
+```
+
+```bash Node.js
+node index.js
+```
+
+```bash Bun
+bun index.ts
+```
+
+```bash Deno
+deno run --allow-env --allow-net index.ts
+```
+</CodeGroup>
+
+You should see output similar to:
+
+```
+Hello, Upstash!
+Page views: 1
+User: { name: 'Alice', email: 'alice@example.com', age: '30' }
+```
+
+<Check>
+Congratulations! You've successfully connected to Upstash Redis and executed your first commands.
+</Check>
+
+## Common patterns
+
+### TypeScript support
+
+The SDK is fully typed. Use generics for type safety:
+
+```typescript
+interface User {
+  name: string;
+  email: string;
+  age: number;
+}
+
+// Type-safe operations
+await redis.set<User>('user:1', {
+  name: 'Bob',
+  email: 'bob@example.com',
+  age: 25
+});
+
+const user = await redis.get<User>('user:1');
+// user is typed as User | null
+```
+
+### Working with JSON
+
+Use the built-in JSON support for complex objects:
+
+```typescript
+await redis.json.set('product:1', '$', {
+  id: 1,
+  name: 'Laptop',
+  price: 999.99,
+  specs: {
+    cpu: 'Intel i7',
+    ram: '16GB'
+  },
+  tags: ['electronics', 'computers']
+});
+
+// Get the entire object
+const product = await redis.json.get('product:1', '$');
+
+// Update nested fields
+await redis.json.set('product:1', '$.price', 899.99);
+
+// Append to arrays
+await redis.json.arrappend('product:1', '$.tags', 'sale');
+```
+
+### Batch operations with pipelines
+
+Execute multiple commands efficiently:
+
+```typescript
+const pipeline = redis.pipeline();
+pipeline.set('user:1', 'Alice');
+pipeline.set('user:2', 'Bob');
+pipeline.set('user:3', 'Charlie');
+pipeline.get('user:1');
+pipeline.get('user:2');
+
+const results = await pipeline.exec();
+console.log(results); // ['OK', 'OK', 'OK', 'Alice', 'Bob']
+```
+
+### Auto-pipelining
+
+Enable auto-pipelining for automatic batching:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableAutoPipelining: true
+});
+
+// These commands are automatically batched
+const [user, posts, count] = await Promise.all([
+  redis.get('user:123'),
+  redis.lrange('posts:123', 0, 10),
+  redis.incr('views:123')
+]);
+```
+
+## Platform-specific setup
+
+### Cloudflare Workers
+
+```typescript
+import { Redis } from '@upstash/redis/cloudflare';
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+    
+    const count = await redis.incr('counter');
+    return new Response(`Count: ${count}`);
+  }
+};
+```
+
+### Vercel Edge Functions
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+export const config = {
+  runtime: 'edge',
+};
+
+export default async function handler() {
+  const redis = Redis.fromEnv();
+  
+  const value = await redis.get('key');
+  
+  return new Response(JSON.stringify({ value }), {
+    headers: { 'content-type': 'application/json' }
+  });
+}
+```
+
+### Next.js App Router
+
+```typescript app/api/data/route.ts
+import { Redis } from '@upstash/redis';
+import { NextResponse } from 'next/server';
+
+const redis = Redis.fromEnv();
+
+export async function GET() {
+  const data = await redis.get('mykey');
+  return NextResponse.json({ data });
+}
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  await redis.set('mykey', body);
+  return NextResponse.json({ success: true });
+}
+```
+
+## What's next?
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/client-configuration">
+    Learn about client configuration, pipelines, and advanced features
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/redis">
+    Explore all available Redis commands and methods
+  </Card>
+  <Card title="Platform Guides" icon="server" href="/platforms/nodejs">
+    Platform-specific setup for Cloudflare, Vercel, AWS, and more
+  </Card>
+  <Card title="Examples" icon="flask" href="/examples/basic-usage">
+    See real-world examples and best practices
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection errors">
+    If you're getting connection errors:
+    
+    1. Verify your credentials in the Upstash Console
+    2. Check that your environment variables are loaded correctly
+    3. Ensure your URL starts with `https://`
+    4. Make sure your database region is accessible from your deployment region
+  </Accordion>
+  
+  <Accordion title="TypeScript errors">
+    For TypeScript errors:
+    
+    1. Ensure you have TypeScript 4.5 or higher
+    2. Add `"moduleResolution": "node"` to your `tsconfig.json`
+    3. Install the latest SDK version: `npm install @upstash/redis@latest`
+  </Accordion>
+  
+  <Accordion title="Data not persisting">
+    If your data isn't persisting:
+    
+    1. Check if you set an expiration time that's too short
+    2. Verify you're not using a different database/environment
+    3. Make sure you're awaiting async operations
+  </Accordion>
+</AccordionGroup>
+
+## Get help
+
+Need assistance? We're here to help:
+
+- Join our [Discord community](https://upstash.com/discord)
+- Check the [GitHub repository](https://github.com/upstash/redis-js)
+- Read the [full documentation](/introduction)
+- Contact [Upstash support](https://upstash.com/support)

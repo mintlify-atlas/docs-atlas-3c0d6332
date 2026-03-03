@@ -1,0 +1,149 @@
+---
+title: 'getex'
+description: 'Get the value of a key and optionally set its expiration'
+---
+
+## Description
+
+Get the value of key and optionally set its expiration. `GETEX` is similar to `GET`, but can also set the time-to-live of the key.
+
+## Syntax
+
+```typescript
+redis.getex<TData>(
+  key: string,
+  options?: { ex?: number; px?: number; exat?: number; pxat?: number; persist?: boolean }
+): Promise<TData | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to retrieve
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional expiration settings
+  
+  <Expandable title="properties">
+    <ParamField path="ex" type="number">
+      Set expiration in seconds
+    </ParamField>
+    
+    <ParamField path="px" type="number">
+      Set expiration in milliseconds
+    </ParamField>
+    
+    <ParamField path="exat" type="number">
+      Set expiration as Unix timestamp in seconds
+    </ParamField>
+    
+    <ParamField path="pxat" type="number">
+      Set expiration as Unix timestamp in milliseconds
+    </ParamField>
+    
+    <ParamField path="persist" type="boolean">
+      Remove the expiration from the key
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="TData" type="type" default="string">
+  The expected type of the returned data
+</ParamField>
+
+## Returns
+
+<ResponseField name="value" type="TData | null">
+  The value of the key, or `null` if the key does not exist
+</ResponseField>
+
+## Examples
+
+### Get and Set Expiration
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set a value without expiration
+await redis.set('session', 'user-data');
+
+// Get value and set 60 second expiration
+const data = await redis.getex('session', { ex: 60 });
+console.log(data); // 'user-data'
+// Now session will expire in 60 seconds
+```
+
+### Extend Session on Access
+
+```typescript
+interface Session {
+  userId: string;
+  lastAccess: number;
+}
+
+// Every time session is accessed, extend its TTL
+const session = await redis.getex<Session>('session:abc123', {
+  ex: 1800 // 30 minutes
+});
+
+if (session) {
+  console.log('Session active for user:', session.userId);
+  // Session TTL automatically extended to 30 minutes from now
+} else {
+  console.log('Session expired or not found');
+}
+```
+
+### Different Expiration Formats
+
+```typescript
+// Expire in seconds
+await redis.getex('key1', { ex: 60 });
+
+// Expire in milliseconds
+await redis.getex('key2', { px: 60000 });
+
+// Expire at specific Unix timestamp (seconds)
+const timestamp = Math.floor(Date.now() / 1000) + 3600;
+await redis.getex('key3', { exat: timestamp });
+
+// Expire at specific Unix timestamp (milliseconds)
+const msTimestamp = Date.now() + 3600000;
+await redis.getex('key4', { pxat: msTimestamp });
+```
+
+### Remove Expiration
+
+```typescript
+// Get value and make it persistent (remove expiration)
+await redis.set('temp-key', 'value', { ex: 60 });
+
+const value = await redis.getex('temp-key', { persist: true });
+// temp-key no longer has an expiration
+```
+
+## Use Cases
+
+- **Session management**: Extend session TTL on each access
+- **Sliding window**: Implement sliding expiration windows
+- **Cache warming**: Access cache and extend its lifetime
+- **Rate limiting**: Get counter value and refresh window
+
+## Related Commands
+
+- [get](/api/commands/get) - Get the value without modifying expiration
+- [getdel](/api/commands/getdel) - Get the value and delete the key
+- [expire](/api/commands/expire) - Set expiration on a key
+- [ttl](/api/commands/ttl) - Get the remaining time to live
+
+## Redis Documentation
+
+For more information, see the [Redis GETEX documentation](https://redis.io/commands/getex).

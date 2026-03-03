@@ -1,0 +1,149 @@
+---
+title: 'copy'
+description: 'Copy a key to another key'
+---
+
+## Description
+
+Copy the value stored at the source key to the destination key. By default, the destination key is overwritten if it already exists.
+
+## Syntax
+
+```typescript
+redis.copy(
+  source: string,
+  destination: string,
+  options?: { replace?: boolean }
+): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="source" type="string" required>
+  The key to copy from
+</ParamField>
+
+<ParamField path="destination" type="string" required>
+  The key to copy to
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration
+  
+  <Expandable title="properties">
+    <ParamField path="replace" type="boolean" default="true">
+      If `false`, the command will fail if the destination key already exists
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="number">
+  - `1` if source was copied
+  - `0` if source was not copied (destination exists and replace is false, or source doesn't exist)
+</ResponseField>
+
+## Examples
+
+### Basic Copy
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set a value
+await redis.set('original', 'data');
+
+// Copy to a new key
+const result = await redis.copy('original', 'backup');
+console.log(result); // 1 (success)
+
+// Both keys now have the same value
+const original = await redis.get('original');
+const backup = await redis.get('backup');
+console.log(original === backup); // true
+```
+
+### Prevent Overwrite
+
+```typescript
+// Set values
+await redis.set('key1', 'value1');
+await redis.set('key2', 'value2');
+
+// Try to copy without replacing
+const result = await redis.copy('key1', 'key2', { replace: false });
+console.log(result); // 0 (failed - key2 already exists)
+
+// key2 still has its original value
+const value = await redis.get('key2');
+console.log(value); // 'value2'
+```
+
+### Backup Pattern
+
+```typescript
+interface UserData {
+  name: string;
+  email: string;
+  preferences: object;
+}
+
+// Create a backup before updating
+const userId = '123';
+const userKey = `user:${userId}`;
+const backupKey = `user:${userId}:backup`;
+
+// Backup current data
+await redis.copy(userKey, backupKey);
+
+// Now safe to update
+await redis.set<UserData>(userKey, {
+  name: 'Updated Name',
+  email: 'new@example.com',
+  preferences: {}
+});
+
+// If something goes wrong, restore from backup
+// await redis.copy(backupKey, userKey);
+```
+
+### Copy Complex Data Types
+
+```typescript
+// Works with all Redis data types
+
+// Hash
+await redis.hset('user:1', { name: 'Alice', age: '30' });
+await redis.copy('user:1', 'user:1:copy');
+
+// List
+await redis.lpush('list1', 'a', 'b', 'c');
+await redis.copy('list1', 'list1:copy');
+
+// Set
+await redis.sadd('tags', 'redis', 'database');
+await redis.copy('tags', 'tags:copy');
+```
+
+## Use Cases
+
+- **Backups**: Create point-in-time copies of data
+- **Versioning**: Maintain multiple versions of data
+- **Testing**: Copy production data to test keys
+- **Migration**: Safely move data to new key structures
+
+## Related Commands
+
+- [rename](/api/commands/rename) - Rename a key (moves instead of copies)
+- [exists](/api/commands/exists) - Check if a key exists
+- [del](/api/commands/del) - Delete keys
+
+## Redis Documentation
+
+For more information, see the [Redis COPY documentation](https://redis.io/commands/copy).

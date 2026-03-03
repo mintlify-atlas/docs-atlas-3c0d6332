@@ -1,0 +1,87 @@
+---
+title: 'flushall'
+description: 'Delete all keys from all databases'
+---
+
+## Description
+
+Delete all the keys of all databases on the server. This command never fails.
+
+<Warning>
+This is a destructive command. Use with extreme caution in production environments.
+</Warning>
+
+## Syntax
+
+```typescript
+redis.flushall(options?: { async?: boolean }): Promise<'OK'>
+```
+
+## Parameters
+
+<ParamField path="options" type="object">
+  Optional configuration for the flush operation
+  
+  <Expandable title="properties">
+    <ParamField path="async" type="boolean" default="false">
+      If `true`, flushes asynchronously. The command returns immediately and the flush happens in the background.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="'OK'">
+  Always returns `'OK'`
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Delete all keys from all databases
+await redis.flushall();
+console.log('All databases flushed');
+```
+
+### Async Flush
+
+```typescript
+// Flush asynchronously (non-blocking)
+await redis.flushall({ async: true });
+console.log('Flush started in background');
+```
+
+### Testing Cleanup
+
+```typescript
+// Common pattern in test cleanup
+afterEach(async () => {
+  await redis.flushall();
+});
+```
+
+## Best Practices
+
+<Warning>
+- **Production**: Never use `flushall` in production unless you absolutely know what you're doing
+- **Testing**: Perfect for cleaning up test databases between test runs
+- **Development**: Useful for resetting development databases
+</Warning>
+
+## Related Commands
+
+- [flushdb](/api/commands/flushdb) - Delete all keys from the current database only
+- [del](/api/commands/del) - Delete specific keys
+
+## Redis Documentation
+
+For more information, see the [Redis FLUSHALL documentation](https://redis.io/commands/flushall).

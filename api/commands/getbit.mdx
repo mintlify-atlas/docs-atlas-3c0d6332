@@ -1,0 +1,97 @@
+---
+title: 'getbit'
+description: 'Get the bit value at offset in a string'
+---
+
+## Description
+
+Returns the bit value at offset in the string value stored at key. When offset is beyond the string length, or the key does not exist, it returns 0.
+
+## Syntax
+
+```typescript
+redis.getbit(key: string, offset: number): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the bitmap
+</ParamField>
+
+<ParamField path="offset" type="number" required>
+  The bit offset to retrieve (0-based)
+</ParamField>
+
+## Returns
+
+<ResponseField name="bit" type="number">
+  The bit value at offset (0 or 1)
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set a bit
+await redis.setbit('mykey', 7, 1);
+
+// Get the bit
+const bit = await redis.getbit('mykey', 7);
+console.log(bit); // 1
+
+// Get an unset bit
+const unset = await redis.getbit('mykey', 100);
+console.log(unset); // 0
+```
+
+### Check User Status
+
+```typescript
+// Check if user was active on a specific date
+async function wasUserActive(
+  userId: number,
+  date: string
+): Promise<boolean> {
+  const key = `active:${date}`;
+  const bit = await redis.getbit(key, userId);
+  return bit === 1;
+}
+
+const active = await wasUserActive(123, '2024-03-01');
+console.log('User 123 active:', active);
+```
+
+### Feature Flag Check
+
+```typescript
+async function hasFeatureEnabled(
+  userId: number,
+  featureId: string
+): Promise<boolean> {
+  const key = `features:${featureId}`;
+  const enabled = await redis.getbit(key, userId);
+  return enabled === 1;
+}
+
+if (await hasFeatureEnabled(42, 'beta-features')) {
+  console.log('Beta features enabled for user 42');
+}
+```
+
+## Related Commands
+
+- [setbit](/api/commands/setbit) - Set a bit value
+- [bitcount](/api/commands/bitcount) - Count set bits
+
+## Redis Documentation
+
+For more information, see the [Redis GETBIT documentation](https://redis.io/commands/getbit).

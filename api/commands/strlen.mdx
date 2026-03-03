@@ -1,0 +1,93 @@
+---
+title: 'strlen'
+description: 'Get the length of the value stored in a key'
+---
+
+## Description
+
+Returns the length of the string value stored at key. An error is returned when key holds a non-string value.
+
+## Syntax
+
+```typescript
+redis.strlen(key: string): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to check
+</ParamField>
+
+## Returns
+
+<ResponseField name="length" type="number">
+  The length of the string at key, or 0 when the key does not exist
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set a string value
+await redis.set('message', 'Hello, World!');
+
+// Get the length
+const length = await redis.strlen('message');
+console.log(length); // 13
+
+// Non-existent key returns 0
+const missing = await redis.strlen('nonexistent');
+console.log(missing); // 0
+```
+
+### Validation
+
+```typescript
+// Check if a value exceeds a maximum length
+const MAX_LENGTH = 100;
+
+const currentLength = await redis.strlen('user:bio');
+
+if (currentLength > MAX_LENGTH) {
+  console.log('Bio exceeds maximum length');
+} else {
+  console.log(`Bio length: ${currentLength}/${MAX_LENGTH}`);
+}
+```
+
+### With JSON Strings
+
+```typescript
+// Note: strlen returns byte length, not character count
+const data = { name: 'Alice', age: 30 };
+await redis.set('user:data', JSON.stringify(data));
+
+const byteLength = await redis.strlen('user:data');
+console.log('JSON byte length:', byteLength);
+```
+
+## Important Notes
+
+<Note>
+`STRLEN` returns the number of bytes, not the number of characters. For UTF-8 encoded strings with multi-byte characters, the byte length may be larger than the character count.
+</Note>
+
+## Related Commands
+
+- [get](/api/commands/get) - Get the value of a key
+- [append](/api/commands/append) - Append to a string value
+- [setrange](/api/commands/setrange) - Overwrite part of a string
+- [getrange](/api/commands/getrange) - Get a substring
+
+## Redis Documentation
+
+For more information, see the [Redis STRLEN documentation](https://redis.io/commands/strlen).

@@ -1,0 +1,133 @@
+---
+title: 'rename'
+description: 'Rename a key'
+---
+
+## Description
+
+Renames key to newkey. It returns an error when key does not exist. If newkey already exists it is overwritten.
+
+<Warning>
+If newkey already exists, it will be deleted and replaced. This operation is atomic.
+</Warning>
+
+## Syntax
+
+```typescript
+redis.rename(key: string, newkey: string): Promise<'OK'>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to rename
+</ParamField>
+
+<ParamField path="newkey" type="string" required>
+  The new name for the key
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="'OK'">
+  Returns `'OK'` on success
+</ResponseField>
+
+## Examples
+
+### Basic Rename
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set a value
+await redis.set('oldname', 'data');
+
+// Rename the key
+await redis.rename('oldname', 'newname');
+
+// oldname no longer exists
+const old = await redis.get('oldname');
+console.log(old); // null
+
+// newname now has the value
+const value = await redis.get('newname');
+console.log(value); // 'data'
+```
+
+### Overwrite Warning
+
+```typescript
+// CAUTION: This will overwrite key2!
+await redis.set('key1', 'value1');
+await redis.set('key2', 'value2');
+
+// key2 will be deleted and replaced
+await redis.rename('key1', 'key2');
+
+const result = await redis.get('key2');
+console.log(result); // 'value1' (key2's original value is gone)
+```
+
+### Safe Rename with Check
+
+```typescript
+// Check if destination exists before renaming
+const exists = await redis.exists('newkey');
+
+if (exists) {
+  console.log('Warning: newkey already exists and will be overwritten');
+  // Consider using renamenx instead
+} else {
+  await redis.rename('oldkey', 'newkey');
+}
+```
+
+### Migration Pattern
+
+```typescript
+// Migrate from old key structure to new structure
+const oldPattern = 'user_*';
+const keys = await redis.keys(oldPattern);
+
+for (const oldKey of keys) {
+  // Convert 'user_123' to 'user:123'
+  const newKey = oldKey.replace('user_', 'user:');
+  
+  await redis.rename(oldKey, newKey);
+  console.log(`Migrated ${oldKey} to ${newKey}`);
+}
+```
+
+## Error Handling
+
+```typescript
+try {
+  await redis.rename('nonexistent', 'newkey');
+} catch (error) {
+  console.error('Rename failed:', error);
+  // Error: no such key
+}
+```
+
+## Best Practices
+
+<Warning>
+- **Data Loss Risk**: The destination key will be overwritten if it exists
+- **Atomic Operation**: The rename is atomic, but any existing key at newkey is deleted
+</Warning>
+
+## Related Commands
+
+- [copy](/api/commands/copy) - Copy a key (doesn't delete source)
+- [exists](/api/commands/exists) - Check if a key exists
+- [del](/api/commands/del) - Delete keys
+
+## Redis Documentation
+
+For more information, see the [Redis RENAME documentation](https://redis.io/commands/rename).
