@@ -1,0 +1,135 @@
+---
+title: 'HEXISTS'
+description: 'Check if a hash field exists'
+---
+
+## Usage
+
+Returns if `field` is an existing field in the hash stored at `key`.
+
+```typescript
+await redis.hexists(key, field);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+<ParamField path="field" type="string" required>
+  The field name to check for existence
+</ParamField>
+
+## Response
+
+<ResponseField name="exists" type="number">
+  Returns `1` if the hash contains the field, `0` if the hash does not contain the field or the key does not exist.
+</ResponseField>
+
+## Examples
+
+### Check if a field exists
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set hash fields
+await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com'
+});
+
+// Check if field exists
+const hasName = await redis.hexists('user:1000', 'name');
+console.log(hasName); // 1
+
+const hasAge = await redis.hexists('user:1000', 'age');
+console.log(hasAge); // 0
+```
+
+### Conditional field operations
+
+```typescript
+// Only set a field if it doesn't exist
+const exists = await redis.hexists('user:1000', 'defaultTheme');
+
+if (!exists) {
+  await redis.hset('user:1000', { defaultTheme: 'light' });
+}
+```
+
+### Validate required fields
+
+```typescript
+interface RequiredFields {
+  name: boolean;
+  email: boolean;
+  phone: boolean;
+}
+
+const checkRequired = async (userId: string): Promise<RequiredFields> => {
+  const [hasName, hasEmail, hasPhone] = await Promise.all([
+    redis.hexists(`user:${userId}`, 'name'),
+    redis.hexists(`user:${userId}`, 'email'),
+    redis.hexists(`user:${userId}`, 'phone'),
+  ]);
+
+  return {
+    name: hasName === 1,
+    email: hasEmail === 1,
+    phone: hasPhone === 1,
+  };
+};
+
+const validation = await checkRequired('1000');
+console.log(validation); // { name: true, email: true, phone: false }
+```
+
+### Check before deletion
+
+```typescript
+// Check if field exists before attempting deletion
+if (await redis.hexists('user:1000', 'tempToken')) {
+  await redis.hdel('user:1000', 'tempToken');
+  console.log('Temporary token removed');
+}
+```
+
+### Feature flag checking
+
+```typescript
+// Check if a user has a specific feature enabled
+const hasFeature = await redis.hexists('user:1000:features', 'betaAccess');
+
+if (hasFeature) {
+  console.log('User has beta access');
+}
+```
+
+### Non-existent key
+
+```typescript
+// Check field on non-existent key
+const exists = await redis.hexists('user:9999', 'name');
+console.log(exists); // 0
+```
+
+## Notes
+
+- Returns `1` (not `true`) when the field exists
+- Returns `0` (not `false`) when the field doesn't exist
+- Useful for conditional logic before setting or deleting fields
+- More efficient than getting the value when you only need to check existence
+
+## See Also
+
+- [HGET](/api/commands/hget) - Get a hash field value
+- [HSET](/api/commands/hset) - Set hash field values
+- [HDEL](/api/commands/hdel) - Delete hash fields
+- [HKEYS](/api/commands/hkeys) - Get all field names in a hash

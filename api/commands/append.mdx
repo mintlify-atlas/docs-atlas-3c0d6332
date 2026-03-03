@@ -1,0 +1,106 @@
+---
+title: 'append'
+description: 'Append a value to a key'
+---
+
+## Description
+
+If key already exists and is a string, this command appends the value at the end of the string. If key does not exist, it is created and set as an empty string, so APPEND will be similar to SET in this special case.
+
+## Syntax
+
+```typescript
+redis.append(key: string, value: string): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to append to
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  The string value to append
+</ParamField>
+
+## Returns
+
+<ResponseField name="length" type="number">
+  The length of the string after the append operation
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Append to a new key
+const length1 = await redis.append('message', 'Hello');
+console.log(length1); // 5
+
+const length2 = await redis.append('message', ' World');
+console.log(length2); // 11
+
+const value = await redis.get('message');
+console.log(value); // "Hello World"
+```
+
+### Building Strings Incrementally
+
+```typescript
+// Build a log message incrementally
+await redis.append('log:request:123', '[2024-03-03] ');
+await redis.append('log:request:123', 'User logged in ');
+await redis.append('log:request:123', 'from IP 192.168.1.1');
+
+const log = await redis.get('log:request:123');
+console.log(log);
+// "[2024-03-03] User logged in from IP 192.168.1.1"
+```
+
+### Append to Non-Existent Key
+
+```typescript
+// Appending to a non-existent key creates it
+const length = await redis.append('newkey', 'First value');
+console.log(length); // 11
+
+const value = await redis.get('newkey');
+console.log(value); // "First value"
+```
+
+### Building CSV-like Data
+
+```typescript
+// Create a simple CSV row
+await redis.append('csv:row:1', 'Alice');
+await redis.append('csv:row:1', ',30');
+await redis.append('csv:row:1', ',Engineer');
+
+const row = await redis.get('csv:row:1');
+console.log(row); // "Alice,30,Engineer"
+```
+
+## Notes
+
+- APPEND is very efficient for building strings incrementally
+- The time complexity is O(1), assuming the appended value is small and the already present value is of any size
+- If the key exists but is not a string, an error is returned
+
+## Related Commands
+
+- [set](/api/commands/set) - Set the string value of a key
+- [get](/api/commands/get) - Get the value of a key
+- [setrange](/api/commands/setrange) - Overwrite part of a string at a specific offset
+- [getrange](/api/commands/getrange) - Get a substring of the string stored at a key
+
+## Redis Documentation
+
+For more information, see the [Redis APPEND documentation](https://redis.io/commands/append).

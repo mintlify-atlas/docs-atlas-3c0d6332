@@ -1,0 +1,339 @@
+---
+title: Auto-pipeline
+description: Automatically batch Redis commands for optimal performance without manual pipeline management
+---
+
+## Overview
+
+Auto-pipelining automatically batches multiple Redis commands into a single HTTP request, providing the performance benefits of [manual pipelining](/concepts/pipeline) without requiring explicit pipeline management.
+
+## How it works
+
+When auto-pipelining is enabled (the default), commands issued in the same event loop tick are automatically batched:
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableAutoPipelining: true, // enabled by default
+});
+
+// These three commands execute in the same tick
+// They're automatically batched into a single HTTP request
+const promise1 = redis.set("key1", "value1");
+const promise2 = redis.set("key2", "value2");
+const promise3 = redis.get("key1");
+
+// Wait for all results
+const [result1, result2, result3] = await Promise.all([promise1, promise2, promise3]);
+console.log(result1); // "OK"
+console.log(result2); // "OK"
+console.log(result3); // "value1"
+```
+
+Internally, the SDK:
+
+1. Collects all commands issued in the current tick
+2. Waits for the next tick (using `Promise.resolve().then()`)
+3. Sends all collected commands in a single batch
+4. Returns individual results to each promise
+
+## Enabling auto-pipelining
+
+Auto-pipelining is enabled by default. To explicitly enable or disable:
+
+```typescript
+// Enabled (default)
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableAutoPipelining: true,
+});
+
+// Disabled
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableAutoPipelining: false,
+});
+```
+
+<Info>
+When disabled, each command executes as an individual HTTP request.
+</Info>
+
+## Usage patterns
+
+### Parallel operations
+
+Execute multiple independent commands efficiently:
+
+```typescript
+// All three commands are batched automatically
+const [user, settings, posts] = await Promise.all([
+  redis.get("user:123"),
+  redis.hgetall("user:123:settings"),
+  redis.lrange("user:123:posts", 0, 10),
+]);
+```
+
+### Sequential with batching
+
+Issue commands sequentially in the same tick:
+
+```typescript
+async function updateUserStats(userId: string) {
+  // All issued in the same tick, automatically batched
+  const incrPromise = redis.incr(`user:${userId}:visits`);
+  const setPromise = redis.set(`user:${userId}:last-seen`, Date.now());
+  const saddPromise = redis.sadd("active-users", userId);
+  
+  // Wait for all to complete
+  await Promise.all([incrPromise, setPromise, saddPromise]);
+}
+```
+
+### JSON operations
+
+JSON commands are also auto-pipelined:
+
+```typescript
+// Batched automatically
+const [setResult, getName, getScores] = await Promise.all([
+  redis.json.set("user:1", "$", { name: "Alice", scores: [10, 20, 30] }),
+  redis.json.get("user:1", "$.name"),
+  redis.json.get("user:1", "$.scores"),
+]);
+```
+
+## When commands are batched
+
+Commands are batched when issued in the same event loop tick:
+
+```typescript
+// ✅ Batched - same tick
+const p1 = redis.set("a", 1);
+const p2 = redis.set("b", 2);
+await Promise.all([p1, p2]);
+
+// ❌ Not batched - different ticks
+await redis.set("a", 1);
+await redis.set("b", 2);
+
+// ✅ Batched - both issued before awaiting
+const p3 = redis.set("c", 3);
+await somethingElse(); // Some other async operation
+const p4 = redis.set("d", 4);
+await Promise.all([p3, p4]); // Still batched if in same tick
+```
+
+## Performance comparison
+
+### Without auto-pipelining
+
+```typescript
+const redis = new Redis({
+  url,
+  token,
+  enableAutoPipelining: false,
+});
+
+// 3 separate HTTP requests
+await redis.set("key1", "value1"); // Request 1: ~50ms
+await redis.set("key2", "value2"); // Request 2: ~50ms
+await redis.get("key1");            // Request 3: ~50ms
+// Total: ~150ms
+```
+
+### With auto-pipelining
+
+```typescript
+const redis = new Redis({
+  url,
+  token,
+  enableAutoPipelining: true, // default
+});
+
+// 1 batched HTTP request
+const p1 = redis.set("key1", "value1");
+const p2 = redis.set("key2", "value2");
+const p3 = redis.get("key1");
+await Promise.all([p1, p2, p3]);
+// Total: ~50ms
+```
+
+## Monitoring pipeline batches
+
+Track how many pipeline batches have been executed:
+
+```typescript
+const redis = new Redis({
+  url,
+  token,
+  enableAutoPipelining: true,
+}) as Redis & { pipelineCounter: number };
+
+// Issue some commands
+const p1 = redis.set("a", 1);
+const p2 = redis.set("b", 2);
+await Promise.all([p1, p2]);
+
+console.log(redis.pipelineCounter); // 1
+
+// Issue more commands
+const p3 = redis.set("c", 3);
+const p4 = redis.set("d", 4);
+await Promise.all([p3, p4]);
+
+console.log(redis.pipelineCounter); // 2
+```
+
+## Error handling
+
+Each command's promise resolves or rejects individually:
+
+```typescript
+const p1 = redis.set("key1", "value1");
+const p2 = redis.incr("key1"); // Will fail: not an integer
+const p3 = redis.get("key2");
+
+try {
+  await p1; // Succeeds
+  console.log("Set succeeded");
+} catch (error) {
+  console.error("Set failed", error);
+}
+
+try {
+  await p2; // Fails
+  console.log("Incr succeeded");
+} catch (error) {
+  console.error("Incr failed", error); // This will be caught
+}
+
+try {
+  await p3; // Succeeds
+  console.log("Get succeeded");
+} catch (error) {
+  console.error("Get failed", error);
+}
+```
+
+## Excluded commands
+
+Some commands cannot be auto-pipelined and always execute individually:
+
+- `scan`, `hscan`, `sscan`, `zscan` - Cursor-based iteration
+- `keys` - Returns all keys
+- `hgetall`, `hkeys` - May return large datasets
+- `lrange` - May return large ranges
+- `smembers` - Returns all set members
+- `zrange` - May return large ranges
+- `xrange`, `xrevrange` - Stream ranges
+- `flushdb`, `flushall` - Destructive operations
+- `dbsize` - Database-wide operation
+- `exec` - Transaction execution
+
+These commands execute as individual requests regardless of auto-pipelining settings.
+
+## Auto-pipeline vs manual pipeline
+
+| Feature | Auto-pipeline | Manual pipeline |
+|---------|---------------|----------------|
+| Setup | Automatic | Explicit `.pipeline()` |
+| Syntax | Natural | Chained or sequential |
+| Type inference | Full | Full (when chained) |
+| Control | Implicit batching | Explicit batching |
+| Error handling | Individual promises | Array or keepErrors |
+| Use case | General development | Fine-grained control |
+
+### When to use auto-pipeline
+
+- Default choice for most applications
+- Serverless functions with multiple commands
+- Simplified code without manual pipeline management
+- When batching can happen naturally via `Promise.all()`
+
+### When to use manual pipeline
+
+- Need explicit control over batch boundaries
+- Want to see exactly which commands are batched
+- Building complex batch operations
+- Need transaction semantics with `multi()`
+
+## Real-world example
+
+Serverless function with auto-pipelining:
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableAutoPipelining: true,
+});
+
+export async function handler(event: { userId: string; action: string }) {
+  const { userId, action } = event;
+  
+  // All these commands are automatically batched into a single request
+  const incrementPromise = redis.incr(`user:${userId}:actions`);
+  const timestampPromise = redis.set(`user:${userId}:last-action`, Date.now());
+  const logPromise = redis.lpush(`user:${userId}:log`, action);
+  const addActivePromise = redis.sadd("active-users", userId);
+  
+  // Wait for all operations
+  await Promise.all([
+    incrementPromise,
+    timestampPromise,
+    logPromise,
+    addActivePromise,
+  ]);
+  
+  return { success: true };
+}
+// Total latency: 1 HTTP request instead of 4
+```
+
+## Best practices
+
+1. **Issue commands before awaiting**: Let the SDK collect multiple commands
+   ```typescript
+   // Good
+   const p1 = redis.set("a", 1);
+   const p2 = redis.set("b", 2);
+   await Promise.all([p1, p2]);
+   
+   // Bad - not batched
+   await redis.set("a", 1);
+   await redis.set("b", 2);
+   ```
+
+2. **Use Promise.all() for parallel operations**
+   ```typescript
+   const results = await Promise.all([
+     redis.get("key1"),
+     redis.get("key2"),
+     redis.get("key3"),
+   ]);
+   ```
+
+3. **Handle errors individually**
+   ```typescript
+   const promises = [
+     redis.set("a", 1).catch(e => ({ error: e })),
+     redis.set("b", 2).catch(e => ({ error: e })),
+   ];
+   const results = await Promise.all(promises);
+   ```
+
+4. **Monitor pipeline efficiency in development**
+   ```typescript
+   if (process.env.NODE_ENV === "development") {
+     const redis = new Redis({ url, token }) as Redis & { pipelineCounter: number };
+     // Log pipeline count periodically
+   }
+   ```

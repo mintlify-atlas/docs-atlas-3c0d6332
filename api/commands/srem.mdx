@@ -1,0 +1,61 @@
+---
+title: SREM
+description: Remove one or more members from a set
+---
+
+Remove one or more members from a set stored at key. Members that do not exist in the set are ignored. If the key does not exist, it is treated as an empty set and the command returns 0.
+
+## Usage
+
+```typescript
+await redis.srem(key, ...members);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The key of the set
+</ParamField>
+
+<ParamField body="members" type="TData[]" required>
+  One or more members to remove from the set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The number of members that were removed from the set, not including non-existing members
+</ResponseField>
+
+## Examples
+
+### Remove a single member
+
+```typescript
+await redis.sadd("myset", "hello", "world");
+const result = await redis.srem("myset", "hello");
+console.log(result); // 1
+```
+
+### Remove multiple members
+
+```typescript
+await redis.sadd("fruits", "apple", "banana", "orange", "grape");
+const result = await redis.srem("fruits", "apple", "orange");
+console.log(result); // 2
+```
+
+### Remove non-existing members
+
+```typescript
+await redis.sadd("colors", "red", "blue");
+const result = await redis.srem("colors", "green", "yellow");
+console.log(result); // 0
+```
+
+### Remove from non-existing set
+
+```typescript
+const result = await redis.srem("nonexistent", "member");
+console.log(result); // 0
+```

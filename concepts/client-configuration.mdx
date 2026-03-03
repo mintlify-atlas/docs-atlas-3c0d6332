@@ -1,0 +1,292 @@
+---
+title: Client configuration
+description: Configure the Upstash Redis client with connection credentials, retry behavior, and advanced options
+---
+
+## Overview
+
+The Upstash Redis client provides several configuration options to customize behavior for your environment and use case. Configuration varies slightly between platforms, but all platforms share common options.
+
+## Basic configuration
+
+Create a Redis client with your Upstash credentials:
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_REST_URL>",
+  token: "<UPSTASH_REDIS_REST_TOKEN>",
+});
+```
+
+<Note>
+Get your credentials from the [Upstash Console](https://console.upstash.com/redis) under your database details.
+</Note>
+
+## Configuration from environment variables
+
+Load credentials automatically from environment variables:
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
+```
+
+This method reads from:
+- `UPSTASH_REDIS_REST_URL` or `KV_REST_API_URL` for the URL
+- `UPSTASH_REDIS_REST_TOKEN` or `KV_REST_API_TOKEN` for the token
+
+<Note>
+The `KV_*` variables provide compatibility with Vercel KV and other platforms that use different naming conventions.
+</Note>
+
+## Configuration options
+
+### Connection credentials
+
+<ParamField path="url" type="string" required>
+The REST URL for your Upstash Redis database. Find this in the Upstash Console under `UPSTASH_REDIS_REST_URL`.
+</ParamField>
+
+<ParamField path="token" type="string" required>
+The authentication token for your database. Find this in the Upstash Console under `UPSTASH_REDIS_REST_TOKEN`.
+</ParamField>
+
+### HTTP and retry options
+
+<ParamField path="retry" type="RetryConfig" default="5 retries with exponential backoff">
+Configure retry behavior for network errors.
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 100,
+  },
+});
+```
+
+Set to `false` to disable retries:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  retry: false,
+});
+```
+
+**RetryConfig properties:**
+
+- `retries` (number, default: 5): Maximum number of retry attempts
+- `backoff` (function): Function that returns wait time in milliseconds given the retry count
+</ParamField>
+
+<ParamField path="responseEncoding" type="false | 'base64'" default="'base64'">
+Controls how response data is encoded for transfer.
+
+By default, the server base64-encodes responses to safely handle non-UTF8 data like emojis. For very large responses with guaranteed UTF8 data, you can disable this:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  responseEncoding: false,
+});
+```
+
+<Warning>
+Only disable base64 encoding if you're certain your data is valid UTF8. Invalid data will cause parsing errors.
+</Warning>
+</ParamField>
+
+<ParamField path="cache" type="CacheSetting" default="'no-store'">
+Configure HTTP cache behavior. Options: `"default"`, `"force-cache"`, `"no-cache"`, `"no-store"`, `"only-if-cached"`, `"reload"`.
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  cache: "no-store",
+});
+```
+</ParamField>
+
+<ParamField path="signal" type="AbortSignal | (() => AbortSignal)">
+Provide an AbortSignal to cancel in-flight requests.
+
+```typescript
+const controller = new AbortController();
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  signal: controller.signal,
+});
+
+// Cancel all future requests
+controller.abort();
+```
+</ParamField>
+
+### Redis client options
+
+<ParamField path="automaticDeserialization" type="boolean" default="true">
+Automatically deserialize JSON responses from Redis using `JSON.parse`.
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  automaticDeserialization: true,
+});
+
+await redis.set("user", { name: "Alice", age: 30 });
+const user = await redis.get("user"); // Returns { name: "Alice", age: 30 }
+```
+</ParamField>
+
+<ParamField path="enableAutoPipelining" type="boolean" default="true">
+Enable automatic command pipelining for improved performance. See [auto-pipeline](/concepts/auto-pipeline) for details.
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableAutoPipelining: true,
+});
+```
+</ParamField>
+
+<ParamField path="readYourWrites" type="boolean" default="true">
+Ensure read-your-writes consistency. See [read-your-writes](/concepts/read-your-writes) for details.
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  readYourWrites: true,
+});
+```
+</ParamField>
+
+<ParamField path="latencyLogging" type="boolean" default="false">
+Log the latency of each command to the console for debugging.
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  latencyLogging: true,
+});
+
+await redis.get("key");
+// Console output: Latency for GET: 45.23 ms
+```
+</ParamField>
+
+<ParamField path="enableTelemetry" type="boolean" default="true">
+Send anonymous telemetry data to help improve the SDK. Collected data includes SDK version, platform, and runtime version.
+
+Disable telemetry:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableTelemetry: false,
+});
+```
+
+Or set the `UPSTASH_DISABLE_TELEMETRY` environment variable:
+
+```bash
+UPSTASH_DISABLE_TELEMETRY=1
+```
+</ParamField>
+
+### Node.js specific options
+
+<ParamField path="agent" type="unknown">
+Provide a custom HTTP agent for connection reuse (Node.js only).
+
+```typescript
+import https from "https";
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  agent: new https.Agent({ keepAlive: true }),
+});
+```
+
+<Warning>
+This option is not supported in edge runtimes like Vercel Edge Functions or Cloudflare Workers.
+</Warning>
+</ParamField>
+
+<ParamField path="keepAlive" type="boolean" default="true">
+Enable HTTP keep-alive for connection reuse.
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  keepAlive: true,
+});
+```
+</ParamField>
+
+## Platform-specific imports
+
+### Cloudflare Workers
+
+Import from the Cloudflare-specific entrypoint:
+
+```typescript
+import { Redis } from "@upstash/redis/cloudflare";
+
+export default {
+  async fetch(request: Request, env: Env) {
+    const redis = new Redis({
+      url: env.UPSTASH_REDIS_REST_URL,
+      token: env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    
+    // Or use fromEnv with module workers
+    const redis2 = Redis.fromEnv(env);
+    
+    // Use redis...
+  },
+};
+```
+
+### Node.js
+
+Use the standard import:
+
+```typescript
+import { Redis } from "@upstash/redis";
+```
+
+## Advanced: custom requester
+
+For advanced use cases, provide a custom `Requester` implementation:
+
+```typescript
+import { Redis, Requester, UpstashRequest, UpstashResponse } from "@upstash/redis";
+
+const customRequester: Requester = {
+  request: async <TResult>(req: UpstashRequest): Promise<UpstashResponse<TResult>> => {
+    // Custom request implementation
+    // ...
+  },
+};
+
+const redis = new Redis(customRequester);
+```

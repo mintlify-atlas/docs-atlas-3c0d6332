@@ -1,0 +1,187 @@
+---
+title: JSON.OBJKEYS
+description: Get the keys of a JSON object
+---
+
+Returns the keys of the JSON object at the specified path.
+
+## Usage
+
+```typescript
+const keys = await redis.json.objkeys("user:123", "$");
+```
+
+## Arguments
+
+<ParamField path="key" type="string" required>
+  The key containing the JSON document
+</ParamField>
+
+<ParamField path="path" type="string">
+  JSONPath expression pointing to the object whose keys to retrieve. If omitted, defaults to the root path `$`.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="(string[] | null)[]">
+  An array containing arrays of object keys for each matching path. Returns `null` for paths that don't exist or aren't objects.
+</ResponseField>
+
+## Examples
+
+### Get keys from root object
+
+```typescript
+// Document: { "name": "Alice", "age": 30, "email": "alice@example.com" }
+const keys = await redis.json.objkeys("user:123");
+console.log(keys); // [["name", "age", "email"]]
+```
+
+### Get keys with explicit path
+
+```typescript
+// Document: { "name": "Alice", "age": 30, "email": "alice@example.com" }
+const keys = await redis.json.objkeys("user:123", "$");
+console.log(keys); // [["name", "age", "email"]]
+```
+
+### Get keys from nested object
+
+```typescript
+interface User {
+  name: string;
+  profile: {
+    bio: string;
+    website: string;
+    location: string;
+  };
+}
+
+// Document: {
+//   "name": "Alice",
+//   "profile": {
+//     "bio": "Developer",
+//     "website": "example.com",
+//     "location": "NYC"
+//   }
+// }
+
+const profileKeys = await redis.json.objkeys("user:123", "$.profile");
+console.log(profileKeys); // [["bio", "website", "location"]]
+```
+
+### Get keys from multiple objects (wildcard path)
+
+```typescript
+// Document: {
+//   "users": [
+//     { "id": 1, "name": "Alice", "active": true },
+//     { "id": 2, "name": "Bob", "role": "admin" }
+//   ]
+// }
+
+const allKeys = await redis.json.objkeys("data:1", "$.users[*]");
+console.log(allKeys);
+// [
+//   ["id", "name", "active"],
+//   ["id", "name", "role"]
+// ]
+```
+
+### Check object structure
+
+```typescript
+const keys = await redis.json.objkeys("config:app", "$.database");
+
+if (keys[0]?.includes("password")) {
+  console.log("Database config includes password");
+}
+```
+
+### Iterate over object keys
+
+```typescript
+const keys = await redis.json.objkeys("settings:1", "$");
+
+if (keys[0]) {
+  for (const key of keys[0]) {
+    console.log(`Found key: ${key}`);
+  }
+}
+```
+
+### Get keys from deeply nested objects
+
+```typescript
+// Document: {
+//   "app": {
+//     "settings": {
+//       "theme": {
+//         "colors": { "primary": "blue", "secondary": "green" }
+//       }
+//     }
+//   }
+// }
+
+const colorKeys = await redis.json.objkeys(
+  "config:1",
+  "$.app.settings.theme.colors"
+);
+console.log(colorKeys); // [["primary", "secondary"]]
+```
+
+### Handle non-existent paths
+
+```typescript
+const keys = await redis.json.objkeys("user:123", "$.nonexistent");
+console.log(keys); // [null]
+```
+
+### Handle non-object values
+
+```typescript
+// Document: { "count": 42 }
+const keys = await redis.json.objkeys("data:1", "$.count");
+console.log(keys); // [null] - count is a number, not an object
+```
+
+### Get keys from array of objects
+
+```typescript
+// Document: {
+//   "products": [
+//     { "id": "1", "name": "Widget", "price": 9.99 },
+//     { "id": "2", "title": "Gadget", "price": 19.99, "stock": 5 }
+//   ]
+// }
+
+const productKeys = await redis.json.objkeys("store:1", "$.products[*]");
+console.log(productKeys);
+// [
+//   ["id", "name", "price"],
+//   ["id", "title", "price", "stock"]
+// ]
+```
+
+## JSONPath Syntax
+
+- `$` - Get keys from root object
+- `$.object` - Get keys from a nested object
+- `$.nested.object` - Get keys from deeply nested object
+- `$..object` - Get keys from all matching objects recursively
+- `$.array[*]` - Get keys from objects within an array
+- `$.array[0]` - Get keys from specific array element
+
+## Notes
+
+- The path must point to a JSON object. Arrays, strings, numbers, and other non-object values return `null`
+- The order of keys in the returned array may not match the insertion order
+- When using wildcard paths, each matching object returns its own array of keys
+- Returns an empty array `[]` for empty objects `{}`
+- Returns `null` for paths that don't exist or don't point to objects
+
+## See Also
+
+- [JSON.GET](/api/commands/json-get) - Get JSON values
+- [JSON.SET](/api/commands/json-set) - Set JSON values
+- [Redis JSON.OBJKEYS documentation](https://redis.io/commands/json.objkeys)

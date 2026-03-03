@@ -1,0 +1,363 @@
+---
+title: Read-your-writes consistency
+description: Ensure your Redis reads reflect your own writes with Upstash's read-your-writes consistency model
+---
+
+## Overview
+
+Read-your-writes consistency guarantees that any read operation from a client will always reflect the effects of all previous write operations from that same client. This is especially important in globally distributed databases where replication lag can cause stale reads.
+
+## The problem: eventual consistency
+
+Upstash Redis supports global read replicas for low-latency reads worldwide. However, replication takes time:
+
+```typescript
+// Without read-your-writes
+const redis = new Redis({ url, token, readYourWrites: false });
+
+await redis.set("user:123:name", "Alice");
+
+// This might return null or old value if reading from a replica
+// that hasn't replicated the write yet
+const name = await redis.get("user:123:name"); 
+// Potentially: null (stale read)
+```
+
+This can lead to confusing application behavior:
+
+1. User updates their profile name to "Alice"
+2. Application writes to primary: `SET user:123:name Alice`
+3. Application immediately reads from replica: `GET user:123:name`
+4. Replica hasn't replicated yet, returns old value: "Bob"
+5. User sees their old name despite just updating it
+
+## The solution: sync tokens
+
+Upstash implements read-your-writes using sync tokens. When enabled (the default), each write response includes a sync token that represents the replication state:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  readYourWrites: true, // enabled by default
+});
+
+await redis.set("user:123:name", "Alice");
+// Response includes: upstash-sync-token: abc123
+
+const name = await redis.get("user:123:name");
+// Request includes: upstash-sync-token: abc123
+// Server ensures replica has replicated at least to abc123
+// Returns: "Alice" (guaranteed fresh)
+```
+
+## How it works
+
+1. **Client tracks sync token**: The SDK maintains a `upstashSyncToken` that's updated after each write
+2. **Write operations**: Server includes current sync token in response headers
+3. **Read operations**: Client sends latest sync token in request headers
+4. **Server waits**: If reading from replica, server waits until replica has caught up to the sync token
+5. **Consistent read**: Client receives data reflecting all previous writes
+
+## Enabling read-your-writes
+
+Read-your-writes is enabled by default:
+
+```typescript
+// Explicitly enabled (default behavior)
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  readYourWrites: true,
+});
+```
+
+To disable:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  readYourWrites: false,
+});
+```
+
+<Info>
+Disabling read-your-writes can provide lower latency for read-heavy workloads where stale reads are acceptable.
+</Info>
+
+## Using sync tokens
+
+### Automatic sync token management
+
+The SDK automatically manages sync tokens:
+
+```typescript
+const redis = new Redis({ url, token, readYourWrites: true });
+
+// Write - sync token updated automatically
+await redis.set("counter", 0);
+
+// Read - sync token sent automatically
+const value = await redis.get("counter"); // Guaranteed to see 0
+
+// Another write - sync token updated
+await redis.incr("counter");
+
+// Read reflects the increment
+const newValue = await redis.get("counter"); // Guaranteed to see 1
+```
+
+### Manual sync token management
+
+For advanced use cases, you can manually access and set sync tokens:
+
+```typescript
+const redis = new Redis({ url, token, readYourWrites: true });
+
+await redis.set("key", "value");
+
+// Get current sync token
+const syncToken = redis.readYourWritesSyncToken;
+console.log(syncToken); // "abc123..."
+
+// Save sync token (e.g., to session, database, etc.)
+await saveToSession(userId, syncToken);
+
+// Later, restore sync token in a new request
+const redis2 = new Redis({ url, token, readYourWrites: true });
+const savedToken = await loadFromSession(userId);
+redis2.readYourWritesSyncToken = savedToken;
+
+// This read will reflect all writes from the previous session
+const value = await redis2.get("key");
+```
+
+## Cross-request consistency
+
+In serverless environments, each request typically creates a new Redis client. To maintain consistency across requests:
+
+### Using session storage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+export async function handler(request: Request) {
+  const redis = new Redis({ url, token, readYourWrites: true });
+  const session = await getSession(request);
+  
+  // Restore sync token from previous request
+  if (session.syncToken) {
+    redis.readYourWritesSyncToken = session.syncToken;
+  }
+  
+  // Perform operations
+  await redis.set("user:profile", { name: "Alice" });
+  const profile = await redis.get("user:profile"); // Consistent read
+  
+  // Save sync token for next request
+  session.syncToken = redis.readYourWritesSyncToken;
+  await saveSession(session);
+  
+  return new Response(JSON.stringify(profile));
+}
+```
+
+### Using cookies
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+export async function handler(request: Request) {
+  const redis = new Redis({ url, token, readYourWrites: true });
+  
+  // Restore from cookie
+  const syncToken = request.headers.get("cookie")
+    ?.match(/sync-token=([^;]+)/)?.[1];
+  
+  if (syncToken) {
+    redis.readYourWritesSyncToken = decodeURIComponent(syncToken);
+  }
+  
+  // Perform operations
+  await redis.incr("visits");
+  const visits = await redis.get("visits");
+  
+  // Return sync token in cookie
+  return new Response(JSON.stringify({ visits }), {
+    headers: {
+      "Set-Cookie": `sync-token=${encodeURIComponent(redis.readYourWritesSyncToken!)}; Path=/; HttpOnly`,
+    },
+  });
+}
+```
+
+## Performance considerations
+
+### Latency impact
+
+Read-your-writes can add latency to reads if replicas are behind:
+
+```typescript
+// With read-your-writes (may wait for replication)
+const start = Date.now();
+const value = await redis.get("key");
+const latency = Date.now() - start;
+// Latency: 10-100ms (depends on replication lag)
+
+// Without read-your-writes (immediate read from nearest replica)
+const redis2 = new Redis({ url, token, readYourWrites: false });
+const start2 = Date.now();
+const value2 = await redis2.get("key");
+const latency2 = Date.now() - start2;
+// Latency: 5-20ms (faster, but may be stale)
+```
+
+### When to disable
+
+Consider disabling read-your-writes for:
+
+- **Analytics and metrics**: Stale data is acceptable
+- **Caching scenarios**: Eventual consistency is fine
+- **Read-heavy workloads**: Lower latency is more important than consistency
+- **Public data**: Data that doesn't change frequently
+
+```typescript
+const redis = new Redis({
+  url,
+  token,
+  readYourWrites: false, // Accept stale reads for lower latency
+});
+
+// These reads are fast but may be slightly stale
+const pageViews = await redis.get("stats:page-views");
+const popularPosts = await redis.zrange("posts:popular", 0, 10);
+```
+
+### When to keep enabled
+
+- **User-facing data**: Profile updates, settings, etc.
+- **After write operations**: Immediately reading what you just wrote
+- **Financial operations**: Ensuring consistency is critical
+- **Default choice**: When in doubt, keep it enabled
+
+## Consistency guarantees
+
+### What read-your-writes guarantees
+
+✅ Your reads reflect your own writes
+
+```typescript
+await redis.set("key", "value");
+const result = await redis.get("key");
+// Guaranteed: result === "value"
+```
+
+✅ Monotonic reads (won't see older data after newer data)
+
+```typescript
+await redis.set("counter", 1);
+const value1 = await redis.get("counter"); // 1
+await redis.set("counter", 2);
+const value2 = await redis.get("counter"); // 2 (never goes back to 1)
+```
+
+### What it doesn't guarantee
+
+❌ Reading other clients' writes immediately
+
+```typescript
+// Client A
+await redisA.set("shared-key", "from-A");
+
+// Client B (different instance, different sync token)
+const value = await redisB.get("shared-key");
+// May still see old value - read-your-writes only applies to same client
+```
+
+❌ Strong consistency across all clients
+
+```typescript
+// This is eventual consistency, not strong consistency
+// Other clients may see different values temporarily
+```
+
+## Best practices
+
+1. **Keep read-your-writes enabled by default**
+   ```typescript
+   const redis = new Redis({
+     url,
+     token,
+     readYourWrites: true, // default, recommended
+   });
+   ```
+
+2. **Persist sync tokens for cross-request consistency**
+   ```typescript
+   // Save to session, cookie, or database
+   session.syncToken = redis.readYourWritesSyncToken;
+   ```
+
+3. **Disable only when appropriate**
+   ```typescript
+   // Only for analytics, caching, or read-heavy public data
+   const redis = new Redis({ url, token, readYourWrites: false });
+   ```
+
+4. **Don't share Redis instances across users**
+   ```typescript
+   // Bad - sync tokens from different users mix
+   const globalRedis = new Redis({ url, token });
+   
+   // Good - each request gets its own instance
+   app.get("/api/user", async (req) => {
+     const redis = new Redis({ url, token });
+     // ...
+   });
+   ```
+
+## Example: user profile update
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+// User updates profile
+export async function updateProfile(userId: string, name: string) {
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    readYourWrites: true, // Ensure user sees their update
+  });
+  
+  // Write profile
+  await redis.hset(`user:${userId}`, { name, updatedAt: Date.now() });
+  
+  // Immediately read back - guaranteed to see the update
+  const profile = await redis.hgetall(`user:${userId}`);
+  
+  return profile; // User sees their updated name immediately
+}
+
+// User views profile in another request
+export async function getProfile(userId: string, syncToken?: string) {
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    readYourWrites: true,
+  });
+  
+  // Restore sync token from previous request
+  if (syncToken) {
+    redis.readYourWritesSyncToken = syncToken;
+  }
+  
+  // Read profile - reflects all previous writes from this user's session
+  const profile = await redis.hgetall(`user:${userId}`);
+  
+  return {
+    profile,
+    syncToken: redis.readYourWritesSyncToken, // Return for next request
+  };
+}
+```

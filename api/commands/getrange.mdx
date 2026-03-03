@@ -1,0 +1,141 @@
+---
+title: 'getrange'
+description: 'Get a substring of the string stored at a key'
+---
+
+## Description
+
+Returns the substring of the string value stored at key, determined by the offsets start and end (both are inclusive). Negative offsets can be used to provide an offset starting from the end of the string.
+
+## Syntax
+
+```typescript
+redis.getrange(key: string, start: number, end: number): Promise<string>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the string value
+</ParamField>
+
+<ParamField path="start" type="number" required>
+  The starting offset (0-based). Negative values count from the end of the string
+</ParamField>
+
+<ParamField path="end" type="number" required>
+  The ending offset (inclusive). Negative values count from the end of the string
+</ParamField>
+
+## Returns
+
+<ResponseField name="substring" type="string">
+  The substring determined by the start and end offsets
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set a string value
+await redis.set('message', 'Hello, World!');
+
+// Get a substring from index 0 to 4 (inclusive)
+const substr1 = await redis.getrange('message', 0, 4);
+console.log(substr1); // "Hello"
+
+// Get a substring from index 7 to 11
+const substr2 = await redis.getrange('message', 7, 11);
+console.log(substr2); // "World"
+```
+
+### Using Negative Offsets
+
+```typescript
+await redis.set('text', 'Hello, World!');
+
+// Get last 6 characters using negative offset
+const last = await redis.getrange('text', -6, -1);
+console.log(last); // "World!"
+
+// Get from index 0 to the 5th character from the end
+const mixed = await redis.getrange('text', 0, -8);
+console.log(mixed); // "Hello"
+```
+
+### Get Entire String
+
+```typescript
+await redis.set('data', 'Complete String');
+
+// Get the entire string using 0 and -1
+const full = await redis.getrange('data', 0, -1);
+console.log(full); // "Complete String"
+```
+
+### Extract Specific Parts
+
+```typescript
+// Store a date in ISO format
+await redis.set('timestamp', '2024-03-03T10:30:00Z');
+
+// Extract year
+const year = await redis.getrange('timestamp', 0, 3);
+console.log(year); // "2024"
+
+// Extract month
+const month = await redis.getrange('timestamp', 5, 6);
+console.log(month); // "03"
+
+// Extract day
+const day = await redis.getrange('timestamp', 8, 9);
+console.log(day); // "03"
+```
+
+### Non-Existent Key
+
+```typescript
+// Getting range from a non-existent key returns empty string
+const result = await redis.getrange('nonexistent', 0, 10);
+console.log(result); // ""
+```
+
+### Out of Range Offsets
+
+```typescript
+await redis.set('short', 'Hi');
+
+// End offset beyond string length
+const result = await redis.getrange('short', 0, 100);
+console.log(result); // "Hi" (returns entire string)
+
+// Start offset beyond string length
+const empty = await redis.getrange('short', 10, 20);
+console.log(empty); // "" (returns empty string)
+```
+
+## Notes
+
+- Offsets are zero-based
+- Both start and end offsets are inclusive
+- Negative offsets count from the end: -1 is the last character, -2 is the second to last, etc.
+- If start is larger than the end of the string, an empty string is returned
+- If end is larger than the end of the string, the end of the string is used
+- Time complexity is O(N) where N is the length of the returned string
+
+## Related Commands
+
+- [get](/api/commands/get) - Get the value of a key
+- [setrange](/api/commands/setrange) - Overwrite part of a string at a specific offset
+
+## Redis Documentation
+
+For more information, see the [Redis GETRANGE documentation](https://redis.io/commands/getrange).

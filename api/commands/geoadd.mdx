@@ -1,0 +1,174 @@
+---
+title: geoadd
+description: Add one or more geospatial items to a key
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+await redis.geoadd("locations", {
+  longitude: -122.4194,
+  latitude: 37.7749,
+  member: "San Francisco"
+});
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to store the geospatial index.
+</ParamField>
+
+<ParamField path="member" type="GeoMember | GeoMember[]" required>
+  One or more geospatial members to add. Each member includes:
+  
+  <Expandable title="GeoMember properties">
+    <ParamField path="longitude" type="number" required>
+      The longitude coordinate. **Note**: Redis expects longitude first, then latitude.
+      
+      Valid range: -180 to 180 degrees
+    </ParamField>
+    
+    <ParamField path="latitude" type="number" required>
+      The latitude coordinate.
+      
+      Valid range: -85.05112878 to 85.05112878 degrees
+    </ParamField>
+    
+    <ParamField path="member" type="string | number" required>
+      The unique identifier for this location.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="options" type="GeoAddCommandOptions">
+  Optional configuration:
+  
+  <Expandable title="options">
+    <ParamField path="nx" type="boolean">
+      Only add new elements. Don't update existing elements.
+    </ParamField>
+    
+    <ParamField path="xx" type="boolean">
+      Only update existing elements. Don't add new elements.
+    </ParamField>
+    
+    <ParamField path="ch" type="boolean">
+      Return the number of changed elements instead of just added elements. Only works with `xx` option.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number | null">
+  The number of elements added to the sorted set (not including elements already existing for which the score was updated).
+  
+  Returns `null` when used with `xx` or `nx` options and the conditions are not met.
+</ResponseField>
+
+## Examples
+
+### Add a single location
+
+```typescript
+const added = await redis.geoadd("cities", {
+  longitude: -0.1276,
+  latitude: 51.5074,
+  member: "London"
+});
+// Returns: 1
+```
+
+### Add multiple locations
+
+```typescript
+const added = await redis.geoadd(
+  "cities",
+  {
+    longitude: -122.4194,
+    latitude: 37.7749,
+    member: "San Francisco"
+  },
+  {
+    longitude: -118.2437,
+    latitude: 34.0522,
+    member: "Los Angeles"
+  },
+  {
+    longitude: -73.935242,
+    latitude: 40.730610,
+    member: "New York"
+  }
+);
+// Returns: 3
+```
+
+### Only add new locations (nx)
+
+```typescript
+// First add
+await redis.geoadd("cities", {
+  longitude: 2.3522,
+  latitude: 48.8566,
+  member: "Paris"
+});
+
+// Try to add again with nx option
+const result = await redis.geoadd(
+  "cities",
+  { nx: true },
+  {
+    longitude: 2.3522,
+    latitude: 48.8566,
+    member: "Paris" // Already exists
+  }
+);
+// Returns: 0 (nothing added)
+```
+
+### Update existing locations only (xx)
+
+```typescript
+const updated = await redis.geoadd(
+  "cities",
+  { xx: true, ch: true },
+  {
+    longitude: -0.1278, // Updated coordinates
+    latitude: 51.5075,
+    member: "London" // Must already exist
+  }
+);
+// Returns: 1 if updated, 0 if member doesn't exist
+```
+
+## Important Notes
+
+### Coordinate Order
+
+Redis stores geospatial data as a sorted set using the Geohash technique. The coordinate order is **longitude first, then latitude**:
+
+```typescript
+// ✅ Correct - longitude first
+{
+  longitude: -122.4194,  // longitude (x-axis)
+  latitude: 37.7749,     // latitude (y-axis)
+  member: "San Francisco"
+}
+
+// ❌ Don't confuse with latitude/longitude order used in some other systems
+```
+
+### Valid Ranges
+
+- **Longitude**: -180 to 180 degrees
+- **Latitude**: -85.05112878 to 85.05112878 degrees
+
+Coordinates outside these ranges will return an error.

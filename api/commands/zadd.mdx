@@ -1,0 +1,159 @@
+---
+title: 'ZADD'
+description: 'Add one or more members to a sorted set, or update their scores'
+---
+
+## Method Signature
+
+```typescript
+zadd(
+  key: string,
+  scoreMember: ScoreMember<TData> | ZAddCommandOptions,
+  ...scoreMembers: ScoreMember<TData>[]
+): Promise<number | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+<ParamField path="scoreMember" type="ScoreMember<TData> | ZAddCommandOptions" required>
+  Either a score-member pair object or options object. If options are provided, at least one score-member pair must follow.
+  
+  **ScoreMember object:**
+  - `score` (number): The score for the member
+  - `member` (TData): The member value to add
+</ParamField>
+
+<ParamField path="scoreMembers" type="ScoreMember<TData>[]">
+  Additional score-member pairs to add to the sorted set
+</ParamField>
+
+### ZAddCommandOptions
+
+<ParamField path="nx" type="boolean">
+  Only add new elements. Don't update existing elements. Mutually exclusive with `xx`.
+</ParamField>
+
+<ParamField path="xx" type="boolean">
+  Only update existing elements. Don't add new elements. Mutually exclusive with `nx`.
+</ParamField>
+
+<ParamField path="gt" type="boolean">
+  Only update existing elements if the new score is greater than the current score. Mutually exclusive with `lt`.
+</ParamField>
+
+<ParamField path="lt" type="boolean">
+  Only update existing elements if the new score is less than the current score. Mutually exclusive with `gt`.
+</ParamField>
+
+<ParamField path="ch" type="boolean">
+  Modify the return value to be the number of elements changed (added or updated), instead of only newly added elements.
+</ParamField>
+
+<ParamField path="incr" type="boolean">
+  When this option is specified, ZADD acts like ZINCRBY. Only one score-member pair can be specified in this mode.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number | null">
+  The number of elements added to the sorted set (not including elements already existing for which the score was updated).
+  
+  When `ch` option is used, returns the number of elements that were changed (added or updated).
+  
+  When `incr` option is used, returns the new score of the member (as a number), or `null` if the operation was not performed.
+</ResponseField>
+
+## Examples
+
+### Add a single member
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+const result = await redis.zadd('leaderboard', { score: 100, member: 'player1' });
+console.log(result); // 1
+```
+
+### Add multiple members
+
+```typescript
+const result = await redis.zadd(
+  'leaderboard',
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' },
+  { score: 92, member: 'player3' }
+);
+console.log(result); // 3
+```
+
+### Add only if member doesn't exist (NX)
+
+```typescript
+const result = await redis.zadd(
+  'leaderboard',
+  { nx: true },
+  { score: 100, member: 'player1' }
+);
+console.log(result); // 1 if added, 0 if already exists
+```
+
+### Update only if member exists (XX)
+
+```typescript
+const result = await redis.zadd(
+  'leaderboard',
+  { xx: true },
+  { score: 150, member: 'player1' }
+);
+console.log(result); // 0 (score updated but not a new member)
+```
+
+### Update only if new score is greater (GT)
+
+```typescript
+const result = await redis.zadd(
+  'leaderboard',
+  { gt: true },
+  { score: 120, member: 'player1' }
+);
+// Only updates if 120 is greater than current score
+```
+
+### Increment member score (INCR)
+
+```typescript
+const newScore = await redis.zadd(
+  'leaderboard',
+  { incr: true },
+  { score: 10, member: 'player1' }
+);
+console.log(newScore); // Current score + 10
+```
+
+### Return changed count (CH)
+
+```typescript
+const result = await redis.zadd(
+  'leaderboard',
+  { ch: true },
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' }
+);
+console.log(result); // Number of elements added or updated
+```
+
+## Related Commands
+
+- [ZINCRBY](/api/commands/zincrby) - Increment the score of a member
+- [ZSCORE](/api/commands/zscore) - Get the score of a member
+- [ZRANGE](/api/commands/zrange) - Return a range of members
+- [ZRANK](/api/commands/zrank) - Get the rank of a member

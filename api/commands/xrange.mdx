@@ -1,0 +1,297 @@
+---
+title: xrange
+description: Get a range of entries from a stream
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const entries = await redis.xrange("events", "-", "+");
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the stream to read from.
+</ParamField>
+
+<ParamField path="start" type="string" required>
+  The minimum entry ID to include:
+  
+  - `"-"` - Start from the first entry in the stream
+  - `"<ms>-<seq>"` - Start from this specific ID (inclusive)
+  - `"<ms>"` - Start from this timestamp (equivalent to `"<ms>-0"`)
+</ParamField>
+
+<ParamField path="end" type="string" required>
+  The maximum entry ID to include:
+  
+  - `"+"` - Include all entries up to the last one
+  - `"<ms>-<seq>"` - Include entries up to this specific ID (inclusive)
+  - `"<ms>"` - Include entries up to this timestamp
+</ParamField>
+
+<ParamField path="count" type="number">
+  Maximum number of entries to return.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="Record<string, Record<string, unknown>>">
+  An object where keys are entry IDs and values are objects containing the entry's field-value pairs.
+  
+  The SDK automatically deserializes values and attempts to parse JSON.
+  
+  Returns an empty object `{}` if no entries match the range.
+</ResponseField>
+
+## Examples
+
+### Get all entries
+
+```typescript
+// Add some entries
+await redis.xadd("events", "*", { user: "alice", action: "login" });
+await redis.xadd("events", "*", { user: "bob", action: "logout" });
+await redis.xadd("events", "*", { user: "charlie", action: "update" });
+
+// Get all entries
+const all = await redis.xrange("events", "-", "+");
+console.log(all);
+// Returns:
+// {
+//   "1678901234567-0": { user: "alice", action: "login" },
+//   "1678901234568-0": { user: "bob", action: "logout" },
+//   "1678901234569-0": { user: "charlie", action: "update" }
+// }
+```
+
+### Get entries in a time range
+
+```typescript
+// Add entries over time
+const id1 = await redis.xadd("events", "1000-0", { event: "first" });
+const id2 = await redis.xadd("events", "2000-0", { event: "second" });
+const id3 = await redis.xadd("events", "3000-0", { event: "third" });
+const id4 = await redis.xadd("events", "4000-0", { event: "fourth" });
+
+// Get entries between timestamp 1500 and 3500
+const range = await redis.xrange("events", "1500", "3500");
+console.log(range);
+// Returns:
+// {
+//   "2000-0": { event: "second" },
+//   "3000-0": { event: "third" }
+// }
+```
+
+### Get entries starting from a specific ID
+
+```typescript
+const id1 = await redis.xadd("events", "*", { n: 1 });
+const id2 = await redis.xadd("events", "*", { n: 2 });
+const id3 = await redis.xadd("events", "*", { n: 3 });
+
+// Get entries from id2 onwards
+const entries = await redis.xrange("events", id2, "+");
+// Returns entries with id2 and id3
+```
+
+### Get entries up to a specific ID
+
+```typescript
+// Get entries from beginning up to id2
+const entries = await redis.xrange("events", "-", id2);
+// Returns entries with id1 and id2
+```
+
+### Limit number of entries
+
+```typescript
+// Add many entries
+for (let i = 0; i < 100; i++) {
+  await redis.xadd("events", "*", { index: i });
+}
+
+// Get only first 10 entries
+const limited = await redis.xrange("events", "-", "+", 10);
+const count = Object.keys(limited).length;
+console.log(`Received ${count} entries`); // 10
+```
+
+### Get entries from last hour
+
+```typescript
+const now = Date.now();
+const oneHourAgo = now - (60 * 60 * 1000);
+
+const recent = await redis.xrange(
+  "events",
+  `${oneHourAgo}-0`,  // Start from 1 hour ago
+  `${now}-0`          // Up to now
+);
+```
+
+### Iterate through entries
+
+```typescript
+const entries = await redis.xrange("events", "-", "+");
+
+for (const [id, data] of Object.entries(entries)) {
+  console.log(`Entry ${id}:`, data);
+}
+
+// Or get specific fields
+for (const [id, data] of Object.entries(entries)) {
+  const timestamp = id.split("-")[0];
+  const date = new Date(parseInt(timestamp));
+  console.log(`${date.toISOString()}: ${data.action}`);
+}
+```
+
+### Pagination with XRANGE
+
+```typescript
+let lastId = "-";
+const pageSize = 10;
+
+// Get first page
+const page1 = await redis.xrange("events", lastId, "+", pageSize);
+const ids = Object.keys(page1);
+
+if (ids.length > 0) {
+  lastId = ids[ids.length - 1]; // Last ID from this page
+}
+
+// Get next page (entries after lastId)
+const page2 = await redis.xrange("events", `(${lastId}`, "+", pageSize);
+// Note: Use "(" prefix for exclusive range (Redis 6.2+)
+```
+
+### Get entries in reverse order
+
+```typescript
+// XRANGE returns entries in ascending order
+const ascending = await redis.xrange("events", "-", "+");
+
+// To get descending order, use XREVRANGE
+const descending = await redis.xrevrange("events", "+", "-");
+// (Note: XREVRANGE not shown in source, but available in Redis)
+```
+
+### Working with complex data
+
+```typescript
+// Add entries with complex data
+await redis.xadd("orders", "*", {
+  orderId: "ORD-123",
+  userId: 42,
+  items: JSON.stringify(["item1", "item2"]),
+  total: 99.99,
+  metadata: JSON.stringify({ source: "web", campaign: "summer" })
+});
+
+// Read and parse
+const orders = await redis.xrange("orders", "-", "+");
+
+for (const [id, order] of Object.entries(orders)) {
+  const items = JSON.parse(order.items as string);
+  const metadata = JSON.parse(order.metadata as string);
+  
+  console.log({
+    id,
+    orderId: order.orderId,
+    userId: order.userId,
+    items,
+    total: order.total,
+    metadata
+  });
+}
+```
+
+## Important Notes
+
+### Inclusive Ranges
+
+Both `start` and `end` are **inclusive**:
+
+```typescript
+await redis.xadd("stream", "1000-0", { n: 1 });
+await redis.xadd("stream", "2000-0", { n: 2 });
+await redis.xadd("stream", "3000-0", { n: 3 });
+
+const result = await redis.xrange("stream", "1000-0", "2000-0");
+// Returns BOTH 1000-0 and 2000-0 (inclusive)
+```
+
+### Special Range Values
+
+| Value | Meaning |
+|-------|----------|
+| `"-"` | The minimum ID in the stream |
+| `"+"` | The maximum ID in the stream |
+| `"<ms>"` | Shorthand for `"<ms>-0"` |
+
+### Entry ID Format
+
+Entry IDs are strings in the format `"<milliseconds>-<sequence>"`:
+
+```typescript
+const entries = await redis.xrange("events", "-", "+");
+
+for (const id of Object.keys(entries)) {
+  const [ms, seq] = id.split("-");
+  const timestamp = parseInt(ms);
+  const date = new Date(timestamp);
+  
+  console.log(`Entry at ${date.toISOString()}, sequence ${seq}`);
+}
+```
+
+### Return Format
+
+The SDK deserializes the response into a clean object:
+
+```typescript
+// Raw Redis response:
+// [["1678901234567-0", ["field1", "value1", "field2", "value2"]]]
+
+// SDK returns:
+{
+  "1678901234567-0": {
+    field1: "value1",
+    field2: "value2"
+  }
+}
+```
+
+### Automatic JSON Parsing
+
+The SDK attempts to parse JSON values:
+
+```typescript
+await redis.xadd("stream", "*", {
+  name: "test",
+  data: JSON.stringify({ nested: "object" })
+});
+
+const entries = await redis.xrange("stream", "-", "+");
+const firstEntry = Object.values(entries)[0];
+
+console.log(firstEntry.data);
+// Returns: { nested: "object" } (already parsed)
+```
+
+### Performance Considerations
+
+- Use `count` to limit results for large streams
+- Specific time ranges are faster than full scans (`"-"` to `"+"`)
+- For reverse order, consider using `XREVRANGE` if available
+- Pagination is efficient when using the last ID from previous page

@@ -1,0 +1,137 @@
+---
+title: 'LLEN'
+description: 'Get the length of a list'
+---
+
+## Overview
+
+Returns the length of the list stored at `key`. If `key` does not exist, it is interpreted as an empty list and `0` is returned.
+
+## Method Signature
+
+```typescript
+llen(key: string): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the list.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="length" type="number">
+  The length of the list. Returns `0` if the list does not exist.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Add some elements
+await redis.rpush('mylist', 'one', 'two', 'three');
+
+// Get the length
+const length = await redis.llen('mylist');
+console.log(length); // 3
+
+// Check non-existent list
+const emptyLength = await redis.llen('nonexistent');
+console.log(emptyLength); // 0
+```
+
+### Queue Size Monitoring
+
+```typescript
+// Check queue size before processing
+const queueSize = await redis.llen('queue:jobs');
+
+if (queueSize > 100) {
+  console.log('Queue is getting long, consider scaling up workers');
+}
+
+if (queueSize === 0) {
+  console.log('No jobs to process');
+}
+```
+
+### Tracking List Growth
+
+```typescript
+// Monitor list size over time
+const initialSize = await redis.llen('events');
+
+// Add new events
+await redis.rpush('events', 'event1', 'event2', 'event3');
+
+const newSize = await redis.llen('events');
+const added = newSize - initialSize;
+console.log(`Added ${added} new events`);
+```
+
+### Conditional Operations
+
+```typescript
+// Only add items if list is below a certain size
+const maxSize = 1000;
+const currentSize = await redis.llen('limited:list');
+
+if (currentSize < maxSize) {
+  await redis.rpush('limited:list', 'new-item');
+} else {
+  console.log('List is full, cannot add more items');
+}
+```
+
+### Pagination Info
+
+```typescript
+const pageSize = 10;
+const totalItems = await redis.llen('items');
+const totalPages = Math.ceil(totalItems / pageSize);
+
+console.log(`Total items: ${totalItems}`);
+console.log(`Total pages: ${totalPages}`);
+```
+
+### Health Check
+
+```typescript
+// Check if critical queues are empty
+const criticalQueues = ['queue:high-priority', 'queue:normal', 'queue:low'];
+
+for (const queue of criticalQueues) {
+  const size = await redis.llen(queue);
+  console.log(`${queue}: ${size} items`);
+}
+```
+
+### Rate Limiting Check
+
+```typescript
+// Check if user has exceeded rate limit
+const userKey = `rate:user:${userId}`;
+const requestCount = await redis.llen(userKey);
+
+if (requestCount > 100) {
+  throw new Error('Rate limit exceeded');
+}
+
+await redis.rpush(userKey, Date.now().toString());
+```
+
+## See Also
+
+- [LRANGE](/api/commands/lrange) - Get a range of elements from a list
+- [LPUSH](/api/commands/lpush) - Insert elements at the head of a list
+- [RPUSH](/api/commands/rpush) - Insert elements at the tail of a list
+- [LPOP](/api/commands/lpop) - Remove and return the first element of a list

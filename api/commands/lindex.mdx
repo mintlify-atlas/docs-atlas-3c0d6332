@@ -1,0 +1,156 @@
+---
+title: 'LINDEX'
+description: 'Get an element from a list by index'
+---
+
+## Overview
+
+Returns the element at index `index` in the list stored at `key`. The index is zero-based. Negative indices can be used to designate elements starting from the tail of the list.
+
+## Method Signature
+
+```typescript
+lindex<TData = string>(key: string, index: number): Promise<TData | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the list.
+</ParamField>
+
+<ParamField path="index" type="number" required>
+  The index of the element to retrieve (zero-based). Negative indices count from the end of the list (e.g., `-1` is the last element, `-2` is the second-to-last).
+</ParamField>
+
+## Return Value
+
+<ResponseField name="element" type="TData | null">
+  The element at the specified index, or `null` if the index is out of range or the list does not exist.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Set up a list
+await redis.rpush('mylist', 'one', 'two', 'three', 'four');
+
+// Get element at index 0
+const first = await redis.lindex('mylist', 0);
+console.log(first); // 'one'
+
+// Get element at index 2
+const third = await redis.lindex('mylist', 2);
+console.log(third); // 'three'
+
+// Out of range
+const outOfRange = await redis.lindex('mylist', 10);
+console.log(outOfRange); // null
+```
+
+### Using Negative Indexes
+
+```typescript
+await redis.rpush('items', 'A', 'B', 'C', 'D', 'E');
+
+// Get the last element
+const last = await redis.lindex('items', -1);
+console.log(last); // 'E'
+
+// Get the second-to-last element
+const secondLast = await redis.lindex('items', -2);
+console.log(secondLast); // 'D'
+
+// Get the first element using negative index
+const first = await redis.lindex('items', -5);
+console.log(first); // 'A'
+```
+
+### Working with Objects
+
+```typescript
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// Add users
+await redis.rpush<User>('users',
+  { id: '1', name: 'Alice', email: 'alice@example.com' },
+  { id: '2', name: 'Bob', email: 'bob@example.com' },
+  { id: '3', name: 'Charlie', email: 'charlie@example.com' }
+);
+
+// Get specific user
+const user = await redis.lindex<User>('users', 1);
+console.log(user?.name); // 'Bob'
+```
+
+### Peek at Queue Elements
+
+```typescript
+// Peek at the first item in a queue without removing it
+const nextJob = await redis.lindex('queue:jobs', 0);
+
+if (nextJob) {
+  console.log('Next job to process:', nextJob);
+} else {
+  console.log('Queue is empty');
+}
+
+// Peek at the last item added
+const lastAdded = await redis.lindex('queue:jobs', -1);
+console.log('Most recently added job:', lastAdded);
+```
+
+### Accessing List Elements
+
+```typescript
+// Get middle element
+const length = await redis.llen('items');
+const middleIndex = Math.floor(length / 2);
+const middleElement = await redis.lindex('items', middleIndex);
+console.log('Middle element:', middleElement);
+```
+
+### Error Handling
+
+```typescript
+const element = await redis.lindex('mylist', 5);
+
+if (element === null) {
+  console.log('Element not found - index out of range or list does not exist');
+} else {
+  console.log('Found element:', element);
+}
+```
+
+### Iterating Through a List
+
+```typescript
+const length = await redis.llen('mylist');
+
+for (let i = 0; i < length; i++) {
+  const element = await redis.lindex('mylist', i);
+  console.log(`Element ${i}:`, element);
+}
+
+// Note: For iterating through all elements, LRANGE is more efficient
+```
+
+## See Also
+
+- [LSET](/api/commands/lset) - Set the value of an element by index
+- [LRANGE](/api/commands/lrange) - Get a range of elements from a list
+- [LLEN](/api/commands/llen) - Get the length of a list
+- [LPUSH](/api/commands/lpush) - Insert elements at the head of a list

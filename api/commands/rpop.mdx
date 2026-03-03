@@ -1,0 +1,129 @@
+---
+title: 'RPOP'
+description: 'Remove and return the last element(s) of a list'
+---
+
+## Overview
+
+Removes and returns the last element of the list stored at `key`. When a `count` is provided, removes and returns up to `count` elements from the tail of the list.
+
+## Method Signature
+
+```typescript
+rpop<TData = string>(key: string): Promise<TData | null>
+rpop<TData = string[]>(key: string, count: number): Promise<TData | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the list.
+</ParamField>
+
+<ParamField path="count" type="number">
+  The number of elements to pop from the tail. When specified, returns an array of elements instead of a single element.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="element" type="TData | null">
+  When called without `count`: The last element of the list, or `null` if the list is empty or does not exist.
+  
+  When called with `count`: An array of popped elements (from tail to head), or `null` if the list is empty or does not exist.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Set up a list
+await redis.rpush('mylist', 'hello', 'world');
+// List is: ['hello', 'world']
+
+// Pop the last element
+const element = await redis.rpop('mylist');
+console.log(element); // 'world'
+
+// Pop from empty list
+const empty = await redis.rpop('nonexistent');
+console.log(empty); // null
+```
+
+### Pop Multiple Elements
+
+```typescript
+// Set up a list
+await redis.rpush('stack', 'first', 'second', 'third', 'fourth');
+
+// Pop multiple elements from the tail
+const items = await redis.rpop<string[]>('stack', 2);
+console.log(items); // ['fourth', 'third']
+```
+
+### Working with Objects
+
+```typescript
+interface Event {
+  type: string;
+  timestamp: number;
+  data: Record<string, any>;
+}
+
+// Add events
+await redis.rpush<Event>('events', {
+  type: 'user.login',
+  timestamp: Date.now(),
+  data: { userId: '123' },
+});
+
+// Pop the most recent event
+const event = await redis.rpop<Event>('events');
+console.log(event?.type); // 'user.login'
+```
+
+### Stack Implementation
+
+```typescript
+// RPUSH and RPOP implement a stack (LIFO)
+await redis.rpush('stack', 'A');
+await redis.rpush('stack', 'B');
+await redis.rpush('stack', 'C');
+
+const third = await redis.rpop('stack');
+console.log(third); // 'C'
+
+const second = await redis.rpop('stack');
+console.log(second); // 'B'
+
+const first = await redis.rpop('stack');
+console.log(first); // 'A'
+```
+
+### Recent Items Processing
+
+```typescript
+// Process the most recent items
+const recentItems = await redis.rpop<string[]>('recent:activity', 5);
+
+if (recentItems) {
+  // Items are ordered from most recent to least recent
+  for (const item of recentItems) {
+    await processRecentActivity(item);
+  }
+}
+```
+
+## See Also
+
+- [LPOP](/api/commands/lpop) - Remove and return the first element of a list
+- [RPUSH](/api/commands/rpush) - Insert elements at the tail of a list
+- [LRANGE](/api/commands/lrange) - Get a range of elements from a list
+- [LLEN](/api/commands/llen) - Get the length of a list

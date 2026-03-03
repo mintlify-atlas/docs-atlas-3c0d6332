@@ -1,0 +1,114 @@
+---
+title: 'HDEL'
+description: 'Delete one or more hash fields'
+---
+
+## Usage
+
+Removes the specified fields from the hash stored at `key`. Specified fields that do not exist within this hash are ignored.
+
+```typescript
+await redis.hdel(key, ...fields);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+<ParamField path="fields" type="string[]" required>
+  One or more field names to delete from the hash
+</ParamField>
+
+## Response
+
+<ResponseField name="count" type="0 | 1">
+  Returns `1` if at least one field was removed, `0` if no fields were removed (either because they didn't exist or the key doesn't exist).
+</ResponseField>
+
+## Examples
+
+### Delete a single field
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set hash fields
+await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  age: 30,
+  city: 'New York'
+});
+
+// Delete a single field
+const deleted = await redis.hdel('user:1000', 'age');
+console.log(deleted); // 1
+
+// Verify deletion
+const user = await redis.hgetall('user:1000');
+console.log(user); // { name: 'Alice', email: 'alice@example.com', city: 'New York' }
+```
+
+### Delete multiple fields
+
+```typescript
+// Delete multiple fields at once
+const deleted = await redis.hdel('user:1000', 'email', 'city');
+console.log(deleted); // 1
+```
+
+### Delete non-existent field
+
+```typescript
+// Try to delete a field that doesn't exist
+const deleted = await redis.hdel('user:1000', 'phone');
+console.log(deleted); // 0
+```
+
+### Delete from non-existent key
+
+```typescript
+// Try to delete from a key that doesn't exist
+const deleted = await redis.hdel('user:9999', 'name');
+console.log(deleted); // 0
+```
+
+### Remove sensitive data
+
+```typescript
+// Store user data with temporary token
+await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  tempToken: 'xyz789'
+});
+
+// Remove the temporary token after use
+await redis.hdel('user:1000', 'tempToken');
+```
+
+### Clean up cache fields
+
+```typescript
+// Remove cached computed values
+await redis.hdel('product:500', 'cachedPrice', 'cachedInventory', 'cachedRating');
+```
+
+## Notes
+
+- If the key does not exist, it is treated as an empty hash and the command returns `0`
+- The return value indicates whether any field was removed, not the count of removed fields
+- If all fields are removed, the key itself will be automatically deleted
+
+## See Also
+
+- [HSET](/api/commands/hset) - Set hash field values
+- [HEXISTS](/api/commands/hexists) - Check if a hash field exists
+- [HGET](/api/commands/hget) - Get a hash field value

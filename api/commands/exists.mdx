@@ -1,0 +1,62 @@
+---
+title: exists
+description: Check if one or more keys exist
+---
+
+## Description
+
+Returns the number of keys that exist from those specified as arguments.
+
+## Method Signature
+
+```typescript
+exists(...keys: string[]): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="keys" type="string[]" required>
+  One or more keys to check for existence
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="number">
+  The number of keys that exist. If the same existing key is mentioned in the arguments multiple times, it will be counted multiple times.
+</ResponseField>
+
+## Examples
+
+### Check single key existence
+
+```typescript
+await redis.set("mykey", "value");
+const exists = await redis.exists("mykey");
+console.log(exists); // 1
+
+const notExists = await redis.exists("nonexistent");
+console.log(notExists); // 0
+```
+
+### Check multiple keys
+
+```typescript
+await redis.set("key1", "value1");
+await redis.set("key2", "value2");
+
+const exists = await redis.exists("key1", "key2", "key3");
+console.log(exists); // 2 (key1 and key2 exist, key3 does not)
+```
+
+### Duplicate keys are counted multiple times
+
+```typescript
+await redis.set("mykey", "value");
+const exists = await redis.exists("mykey", "mykey", "mykey");
+console.log(exists); // 3
+```
+
+## See Also
+
+- [del](/api/commands/del) - Delete keys
+- [keys](/api/commands/keys) - Find keys matching a pattern

@@ -1,0 +1,112 @@
+---
+title: type
+description: Determine the type of a key
+---
+
+## Description
+
+Returns the string representation of the type of the value stored at key. The different types that can be returned are: `string`, `list`, `set`, `zset`, `hash`, and `none`.
+
+## Method Signature
+
+```typescript
+type(key: string): Promise<Type>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to get the type of
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="Type">
+  The type of the key, one of:
+  - `"string"` - String value
+  - `"list"` - List
+  - `"set"` - Set
+  - `"zset"` - Sorted set
+  - `"hash"` - Hash
+  - `"none"` - Key does not exist
+</ResponseField>
+
+## Examples
+
+### String type
+
+```typescript
+await redis.set("mykey", "value");
+const type = await redis.type("mykey");
+console.log(type); // "string"
+```
+
+### List type
+
+```typescript
+await redis.lpush("mylist", "item");
+const type = await redis.type("mylist");
+console.log(type); // "list"
+```
+
+### Hash type
+
+```typescript
+await redis.hset("myhash", { field: "value" });
+const type = await redis.type("myhash");
+console.log(type); // "hash"
+```
+
+### Set type
+
+```typescript
+await redis.sadd("myset", "member");
+const type = await redis.type("myset");
+console.log(type); // "set"
+```
+
+### Sorted set type
+
+```typescript
+await redis.zadd("myzset", { score: 1, member: "member" });
+const type = await redis.type("myzset");
+console.log(type); // "zset"
+```
+
+### Non-existent key
+
+```typescript
+const type = await redis.type("nonexistent");
+console.log(type); // "none"
+```
+
+### Type-specific operations
+
+```typescript
+const type = await redis.type("mykey");
+
+switch (type) {
+  case "string":
+    const value = await redis.get("mykey");
+    console.log(value);
+    break;
+  case "list":
+    const items = await redis.lrange("mykey", 0, -1);
+    console.log(items);
+    break;
+  case "hash":
+    const fields = await redis.hgetall("mykey");
+    console.log(fields);
+    break;
+  case "none":
+    console.log("Key does not exist");
+    break;
+  default:
+    console.log(`Key is of type: ${type}`);
+}
+```
+
+## See Also
+
+- [exists](/api/commands/exists) - Check if a key exists
+- [scan](/api/commands/scan) - Scan with type filtering

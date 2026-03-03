@@ -1,0 +1,105 @@
+---
+title: JSON.GET
+description: Get JSON values from a Redis key
+---
+
+Retrieves the JSON value stored at the specified key and optionally formats the output.
+
+## Usage
+
+```typescript
+const result = await redis.json.get<UserData>("user:123");
+```
+
+## Arguments
+
+<ParamField path="key" type="string" required>
+  The key containing the JSON document
+</ParamField>
+
+<ParamField path="opts" type="object">
+  Optional formatting options for the returned JSON string
+  
+  <Expandable title="properties">
+    <ParamField path="indent" type="string">
+      Sets the indentation string for nested levels
+    </ParamField>
+    
+    <ParamField path="newline" type="string">
+      Sets the string that's printed at the end of each line
+    </ParamField>
+    
+    <ParamField path="space" type="string">
+      Sets the string that's put between a key and a value
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="path" type="string | string[]">
+  JSONPath expression(s) to specify which parts of the JSON to retrieve. If not specified, returns the entire JSON document.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="TData | null">
+  The JSON value at the specified path, or `null` if the key doesn't exist. The return type is generic and can be specified using TypeScript.
+</ResponseField>
+
+## Examples
+
+### Get entire JSON document
+
+```typescript
+interface User {
+  name: string;
+  email: string;
+  age: number;
+}
+
+const user = await redis.json.get<User>("user:123");
+console.log(user);
+// { name: "Alice", email: "alice@example.com", age: 30 }
+```
+
+### Get specific path
+
+```typescript
+const name = await redis.json.get<string>("user:123", "$.name");
+console.log(name); // ["Alice"]
+```
+
+### Get with formatting options
+
+```typescript
+const formatted = await redis.json.get(
+  "user:123",
+  {
+    indent: "  ",
+    newline: "\n",
+    space: " "
+  },
+  "$"
+);
+```
+
+### Get multiple paths
+
+```typescript
+const data = await redis.json.get("user:123", "$.name", "$.email");
+```
+
+## JSONPath Syntax
+
+Upstash Redis supports JSONPath expressions for querying JSON documents:
+
+- `$` - Root element
+- `$.field` - Access a field
+- `$.field[0]` - Access array element
+- `$..field` - Recursive descent
+- `$.field[*]` - All array elements
+
+## See Also
+
+- [JSON.SET](/api/commands/json-set) - Set JSON values
+- [JSON.DEL](/api/commands/json-del) - Delete JSON values
+- [Redis JSON.GET documentation](https://redis.io/commands/json.get)

@@ -1,0 +1,169 @@
+---
+title: 'incr'
+description: 'Increment the integer value of a key by one'
+---
+
+## Description
+
+Increments the number stored at key by one. If the key does not exist, it is set to 0 before performing the operation. An error is returned if the key contains a value of the wrong type or contains a string that cannot be represented as an integer.
+
+## Syntax
+
+```typescript
+redis.incr(key: string): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the integer to increment
+</ParamField>
+
+## Returns
+
+<ResponseField name="value" type="number">
+  The value of the key after the increment
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set an initial value
+await redis.set('counter', 10);
+
+// Increment by 1
+const newValue = await redis.incr('counter');
+console.log(newValue); // 11
+
+const value = await redis.get('counter');
+console.log(value); // "11"
+```
+
+### Increment Non-Existent Key
+
+```typescript
+// Incrementing a non-existent key initializes it to 0 and then increments
+const result = await redis.incr('newcounter');
+console.log(result); // 1
+```
+
+### Multiple Increments
+
+```typescript
+await redis.set('views', 0);
+
+// Increment multiple times
+await redis.incr('views'); // 1
+await redis.incr('views'); // 2
+await redis.incr('views'); // 3
+
+const totalViews = await redis.get('views');
+console.log(totalViews); // "3"
+```
+
+### Page View Counter
+
+```typescript
+// Track page views
+async function trackPageView(pageId: string) {
+  const views = await redis.incr(`page:${pageId}:views`);
+  console.log(`Page ${pageId} has ${views} views`);
+  return views;
+}
+
+await trackPageView('homepage'); // 1
+await trackPageView('homepage'); // 2
+await trackPageView('about');    // 1
+```
+
+### Request Counter
+
+```typescript
+// Count API requests per user
+async function logRequest(userId: string) {
+  const requestCount = await redis.incr(`user:${userId}:requests`);
+  
+  // Set expiration on first request (if needed)
+  if (requestCount === 1) {
+    await redis.expire(`user:${userId}:requests`, 3600); // 1 hour
+  }
+  
+  return requestCount;
+}
+
+const count = await logRequest('user123');
+console.log(`User has made ${count} requests this hour`);
+```
+
+### Generating Sequential IDs
+
+```typescript
+// Generate unique sequential IDs
+async function getNextOrderId(): Promise<number> {
+  return await redis.incr('order:id:counter');
+}
+
+const orderId1 = await getNextOrderId(); // 1
+const orderId2 = await getNextOrderId(); // 2
+const orderId3 = await getNextOrderId(); // 3
+```
+
+### Rate Limiting Example
+
+```typescript
+async function checkRateLimit(userId: string, maxRequests: number): Promise<boolean> {
+  const key = `ratelimit:${userId}:${Math.floor(Date.now() / 60000)}`; // per minute
+  const current = await redis.incr(key);
+  
+  if (current === 1) {
+    // First request in this minute, set expiration
+    await redis.expire(key, 60);
+  }
+  
+  return current <= maxRequests;
+}
+
+const allowed = await checkRateLimit('user123', 10);
+if (allowed) {
+  console.log('Request allowed');
+} else {
+  console.log('Rate limit exceeded');
+}
+```
+
+## Notes
+
+- This is an atomic operation, making it safe for concurrent increments
+- The value must be an integer or a string that can be parsed as an integer
+- If the key contains a non-integer value, an error will be returned
+- The operation has O(1) time complexity
+- The range of values is limited to 64-bit signed integers
+
+## Error Handling
+
+```typescript
+try {
+  // This will throw an error because "hello" is not a valid integer
+  await redis.set('mykey', 'hello');
+  await redis.incr('mykey');
+} catch (error) {
+  console.error('Cannot increment non-integer value');
+}
+```
+
+## Related Commands
+
+- [decr](/api/commands/decr) - Decrement the integer value of a key by one
+
+## Redis Documentation
+
+For more information, see the [Redis INCR documentation](https://redis.io/commands/incr).

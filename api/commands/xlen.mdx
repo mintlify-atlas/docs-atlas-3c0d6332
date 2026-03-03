@@ -1,0 +1,255 @@
+---
+title: xlen
+description: Get the number of entries in a stream
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const length = await redis.xlen("events");
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the stream.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The number of entries in the stream.
+  
+  Returns `0` if the key doesn't exist or is an empty stream.
+</ResponseField>
+
+## Examples
+
+### Get stream length
+
+```typescript
+// Add some entries
+await redis.xadd("events", "*", { user: "alice", action: "login" });
+await redis.xadd("events", "*", { user: "bob", action: "logout" });
+await redis.xadd("events", "*", { user: "charlie", action: "update" });
+
+// Get the length
+const length = await redis.xlen("events");
+console.log(length); // 3
+```
+
+### Check if stream exists
+
+```typescript
+const length = await redis.xlen("nonexistent");
+
+if (length === 0) {
+  console.log("Stream doesn't exist or is empty");
+} else {
+  console.log(`Stream has ${length} entries`);
+}
+```
+
+### Monitor stream growth
+
+```typescript
+const before = await redis.xlen("events");
+
+// Add new entries
+await redis.xadd("events", "*", { new: "entry1" });
+await redis.xadd("events", "*", { new: "entry2" });
+
+const after = await redis.xlen("events");
+const added = after - before;
+
+console.log(`Added ${added} new entries`);
+// Output: Added 2 new entries
+```
+
+### Track stream size with trimming
+
+```typescript
+// Add 1000 entries
+for (let i = 0; i < 1000; i++) {
+  await redis.xadd("events", "*", { index: i });
+}
+
+console.log(await redis.xlen("events")); // 1000
+
+// Add new entry with trimming to max 500
+await redis.xadd(
+  "events",
+  "*",
+  { index: 1000 },
+  {
+    trim: {
+      type: "MAXLEN",
+      comparison: "~",
+      threshold: 500
+    }
+  }
+);
+
+console.log(await redis.xlen("events")); // ~500 (approximate due to "~")
+```
+
+### Check multiple streams
+
+```typescript
+const streams = ["stream1", "stream2", "stream3"];
+
+const lengths = await Promise.all(
+  streams.map(stream => redis.xlen(stream))
+);
+
+streams.forEach((stream, i) => {
+  console.log(`${stream}: ${lengths[i]} entries`);
+});
+// Output:
+// stream1: 10 entries
+// stream2: 25 entries
+// stream3: 0 entries
+```
+
+### Stream capacity check
+
+```typescript
+const MAX_STREAM_SIZE = 10000;
+
+const currentSize = await redis.xlen("events");
+const remainingCapacity = MAX_STREAM_SIZE - currentSize;
+
+if (remainingCapacity > 0) {
+  console.log(`Can add ${remainingCapacity} more entries`);
+  await redis.xadd("events", "*", { data: "new entry" });
+} else {
+  console.log("Stream is at capacity, trimming required");
+  await redis.xadd(
+    "events",
+    "*",
+    { data: "new entry" },
+    { trim: { type: "MAXLEN", comparison: "=", threshold: MAX_STREAM_SIZE } }
+  );
+}
+```
+
+### Compare stream sizes
+
+```typescript
+const activeLength = await redis.xlen("active-events");
+const archivedLength = await redis.xlen("archived-events");
+
+console.log(`Active: ${activeLength}, Archived: ${archivedLength}`);
+console.log(`Total events processed: ${activeLength + archivedLength}`);
+```
+
+### Conditional operations based on size
+
+```typescript
+async function addEntry(key: string, data: Record<string, unknown>) {
+  const length = await redis.xlen(key);
+  
+  // If stream is getting large, use approximate trimming
+  const trimOptions = length > 5000 ? {
+    trim: {
+      type: "MAXLEN" as const,
+      comparison: "~" as const,
+      threshold: 5000
+    }
+  } : undefined;
+  
+  return await redis.xadd(key, "*", data, trimOptions);
+}
+
+await addEntry("events", { user: "alice", action: "click" });
+```
+
+### Calculate stream growth rate
+
+```typescript
+const initialLength = await redis.xlen("metrics");
+
+// Wait 1 minute
+await new Promise(resolve => setTimeout(resolve, 60000));
+
+const finalLength = await redis.xlen("metrics");
+const entriesPerMinute = finalLength - initialLength;
+
+console.log(`Stream growth rate: ${entriesPerMinute} entries/minute`);
+```
+
+## Important Notes
+
+### Empty Streams
+
+XLEN returns `0` for both non-existent keys and empty streams:
+
+```typescript
+// Non-existent stream
+const len1 = await redis.xlen("never-created");
+console.log(len1); // 0
+
+// Empty stream (all entries deleted)
+await redis.xadd("temp", "*", { data: "test" });
+await redis.del("temp");
+const len2 = await redis.xlen("temp");
+console.log(len2); // 0
+```
+
+To distinguish between them:
+
+```typescript
+const exists = await redis.exists("events");
+const length = await redis.xlen("events");
+
+if (!exists) {
+  console.log("Stream doesn't exist");
+} else if (length === 0) {
+  console.log("Stream exists but is empty");
+} else {
+  console.log(`Stream has ${length} entries`);
+}
+```
+
+### Performance
+
+- XLEN is an O(1) operation (constant time)
+- Very fast even for streams with millions of entries
+- Safe to call frequently for monitoring
+
+### After Trimming
+
+XLEN reflects the current number of entries after any trimming:
+
+```typescript
+await redis.xadd("events", "*", { data: "1" });
+await redis.xadd("events", "*", { data: "2" });
+await redis.xadd("events", "*", { data: "3" });
+
+console.log(await redis.xlen("events")); // 3
+
+// Add with exact trim to 2 entries
+await redis.xadd(
+  "events",
+  "*",
+  { data: "4" },
+  { trim: { type: "MAXLEN", comparison: "=", threshold: 2 } }
+);
+
+console.log(await redis.xlen("events")); // 2
+```
+
+### Use Cases
+
+- **Monitoring**: Track stream size over time
+- **Capacity planning**: Check if trimming is needed
+- **Metrics**: Calculate processing rates
+- **Validation**: Verify entries were added successfully
+- **Debugging**: Understand stream state

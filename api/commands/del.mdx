@@ -1,0 +1,58 @@
+---
+title: del
+description: Delete one or more keys
+---
+
+## Description
+
+Removes the specified keys. A key is ignored if it does not exist.
+
+## Method Signature
+
+```typescript
+del(...keys: string[]): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="keys" type="string[]" required>
+  One or more keys to delete
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="number">
+  The number of keys that were removed
+</ResponseField>
+
+## Examples
+
+### Delete a single key
+
+```typescript
+await redis.set("mykey", "value");
+const deleted = await redis.del("mykey");
+console.log(deleted); // 1
+```
+
+### Delete multiple keys
+
+```typescript
+await redis.set("key1", "value1");
+await redis.set("key2", "value2");
+await redis.set("key3", "value3");
+
+const deleted = await redis.del("key1", "key2", "key3");
+console.log(deleted); // 3
+```
+
+### Delete non-existent keys
+
+```typescript
+const deleted = await redis.del("nonexistent");
+console.log(deleted); // 0
+```
+
+## See Also
+
+- [exists](/api/commands/exists) - Check if keys exist

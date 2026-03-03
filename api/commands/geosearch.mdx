@@ -1,0 +1,298 @@
+---
+title: geosearch
+description: Search for members within a geographic area
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const results = await redis.geosearch(
+  "cities",
+  { type: "FROMLONLAT", coordinate: { lon: -122.4194, lat: 37.7749 } },
+  { type: "BYRADIUS", radius: 100, radiusType: "MI" },
+  "ASC"
+);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the geospatial index.
+</ParamField>
+
+<ParamField path="centerPoint" type="CenterPoint" required>
+  The center point to search from:
+  
+  <Expandable title="FROMLONLAT - Search from coordinates">
+    ```typescript
+    {
+      type: "FROMLONLAT" | "fromlonlat",
+      coordinate: { lon: number, lat: number }
+    }
+    ```
+    
+    Search from specific longitude/latitude coordinates.
+  </Expandable>
+  
+  <Expandable title="FROMMEMBER - Search from existing member">
+    ```typescript
+    {
+      type: "FROMMEMBER" | "frommember",
+      member: string
+    }
+    ```
+    
+    Search from the position of an existing member.
+  </Expandable>
+</ParamField>
+
+<ParamField path="shape" type="Shape" required>
+  The search area shape:
+  
+  <Expandable title="BYRADIUS - Circular search area">
+    ```typescript
+    {
+      type: "BYRADIUS" | "byradius",
+      radius: number,
+      radiusType: "M" | "KM" | "FT" | "MI"
+    }
+    ```
+    
+    Search within a circular radius.
+  </Expandable>
+  
+  <Expandable title="BYBOX - Rectangular search area">
+    ```typescript
+    {
+      type: "BYBOX" | "bybox",
+      rect: { width: number, height: number },
+      rectType: "M" | "KM" | "FT" | "MI"
+    }
+    ```
+    
+    Search within a rectangular bounding box.
+  </Expandable>
+</ParamField>
+
+<ParamField path="order" type="'ASC' | 'DESC' | 'asc' | 'desc'" required>
+  Sort order:
+  
+  - `ASC` - Sort by distance from center (nearest first)
+  - `DESC` - Sort by distance from center (farthest first)
+</ParamField>
+
+<ParamField path="options" type="GeoSearchCommandOptions">
+  Optional search options:
+  
+  <Expandable title="options">
+    <ParamField path="count" type="object">
+      Limit the number of results:
+      
+      ```typescript
+      {
+        limit: number,
+        any?: boolean  // Return as soon as enough matches are found
+      }
+      ```
+    </ParamField>
+    
+    <ParamField path="withCoord" type="boolean">
+      Include coordinates in the response.
+    </ParamField>
+    
+    <ParamField path="withDist" type="boolean">
+      Include distance from center in the response.
+    </ParamField>
+    
+    <ParamField path="withHash" type="boolean">
+      Include Geohash string in the response.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="GeoSearchResponse[]">
+  An array of search results, each containing:
+  
+  <Expandable title="result properties">
+    <ResponseField name="member" type="string">
+      The member name (always included).
+    </ResponseField>
+    
+    <ResponseField name="dist" type="number">
+      Distance from the center point (if `withDist: true`).
+    </ResponseField>
+    
+    <ResponseField name="coord" type="{ long: number, lat: number }">
+      Coordinates of the member (if `withCoord: true`).
+    </ResponseField>
+    
+    <ResponseField name="hash" type="string">
+      Geohash string of the member (if `withHash: true`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Examples
+
+### Search by radius from coordinates
+
+```typescript
+// Add some cities
+await redis.geoadd(
+  "cities",
+  { longitude: -122.4194, latitude: 37.7749, member: "San Francisco" },
+  { longitude: -122.2711, latitude: 37.8044, member: "Oakland" },
+  { longitude: -118.2437, latitude: 34.0522, member: "Los Angeles" },
+  { longitude: -121.8863, latitude: 37.3382, member: "San Jose" }
+);
+
+// Find cities within 50 miles of San Francisco coordinates
+const nearby = await redis.geosearch(
+  "cities",
+  { type: "FROMLONLAT", coordinate: { lon: -122.4194, lat: 37.7749 } },
+  { type: "BYRADIUS", radius: 50, radiusType: "MI" },
+  "ASC"
+);
+// Returns: [
+//   { member: "San Francisco" },
+//   { member: "Oakland" },
+//   { member: "San Jose" }
+// ]
+```
+
+### Search from existing member
+
+```typescript
+const nearby = await redis.geosearch(
+  "cities",
+  { type: "FROMMEMBER", member: "San Francisco" },
+  { type: "BYRADIUS", radius: 100, radiusType: "MI" },
+  "ASC"
+);
+```
+
+### Include distance and coordinates
+
+```typescript
+const results = await redis.geosearch(
+  "cities",
+  { type: "FROMMEMBER", member: "San Francisco" },
+  { type: "BYRADIUS", radius: 100, radiusType: "MI" },
+  "ASC",
+  { withDist: true, withCoord: true }
+);
+// Returns: [
+//   {
+//     member: "San Francisco",
+//     dist: 0,
+//     coord: { long: -122.41940104961395, lat: 37.77490009603002 }
+//   },
+//   {
+//     member: "Oakland",
+//     dist: 8.7156,
+//     coord: { long: -122.27110177278519, lat: 37.80439996259009 }
+//   },
+//   ...
+// ]
+```
+
+### Limit results
+
+```typescript
+const results = await redis.geosearch(
+  "cities",
+  { type: "FROMMEMBER", member: "San Francisco" },
+  { type: "BYRADIUS", radius: 500, radiusType: "MI" },
+  "ASC",
+  { count: { limit: 3 }, withDist: true }
+);
+// Returns only the 3 nearest cities
+```
+
+### Search by rectangular box
+
+```typescript
+const results = await redis.geosearch(
+  "cities",
+  { type: "FROMLONLAT", coordinate: { lon: -122.4194, lat: 37.7749 } },
+  { type: "BYBOX", rect: { width: 100, height: 100 }, rectType: "MI" },
+  "ASC"
+);
+// Returns cities within a 100x100 mile box centered on the coordinates
+```
+
+### Sort by distance descending
+
+```typescript
+const results = await redis.geosearch(
+  "cities",
+  { type: "FROMMEMBER", member: "San Francisco" },
+  { type: "BYRADIUS", radius: 500, radiusType: "MI" },
+  "DESC",  // Farthest first
+  { withDist: true }
+);
+```
+
+### Include all metadata
+
+```typescript
+const results = await redis.geosearch(
+  "cities",
+  { type: "FROMMEMBER", member: "San Francisco" },
+  { type: "BYRADIUS", radius: 100, radiusType: "MI" },
+  "ASC",
+  {
+    withDist: true,
+    withCoord: true,
+    withHash: true,
+    count: { limit: 5 }
+  }
+);
+// Returns: [
+//   {
+//     member: "San Francisco",
+//     dist: 0,
+//     hash: "9q8yyk8yuv0",
+//     coord: { long: -122.41940104961395, lat: 37.77490009603002 }
+//   },
+//   ...
+// ]
+```
+
+## Important Notes
+
+### Performance Considerations
+
+- Use `count.any: true` for better performance when you don't need exact ordering of all results
+- Smaller search areas are faster than larger ones
+- Consider using `BYBOX` for rectangular areas instead of very large radius searches
+
+### Coordinate Order
+
+Note that `centerPoint` uses `lon` and `lat` (shortened forms) while the response `coord` uses `long` and `lat`:
+
+```typescript
+// Input: uses 'lon'
+{ type: "FROMLONLAT", coordinate: { lon: -122.4194, lat: 37.7749 } }
+
+// Output: uses 'long'
+{ member: "...", coord: { long: -122.4194, lat: 37.7749 } }
+```
+
+### Distance Units
+
+| Unit | Abbreviation |
+|------|-------------|
+| Meters | M |
+| Kilometers | KM |
+| Feet | FT |
+| Miles | MI |

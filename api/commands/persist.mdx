@@ -1,0 +1,79 @@
+---
+title: persist
+description: Remove the expiration from a key
+---
+
+## Description
+
+Remove the existing timeout on a key, turning the key from volatile (a key with an expire set) to persistent (a key that will never expire as no timeout is associated).
+
+## Method Signature
+
+```typescript
+persist(key: string): Promise<0 | 1>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to remove expiration from
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="0 | 1">
+  - `1` if the timeout was removed
+  - `0` if key does not exist or does not have an associated timeout
+</ResponseField>
+
+## Examples
+
+### Remove expiration from a key
+
+```typescript
+await redis.set("mykey", "value");
+await redis.expire("mykey", 100);
+
+let ttl = await redis.ttl("mykey");
+console.log(ttl); // ~100
+
+const result = await redis.persist("mykey");
+console.log(result); // 1
+
+ttl = await redis.ttl("mykey");
+console.log(ttl); // -1 (no expiration)
+```
+
+### Key without expiration
+
+```typescript
+await redis.set("mykey", "value");
+const result = await redis.persist("mykey");
+console.log(result); // 0 (key has no timeout)
+```
+
+### Non-existent key
+
+```typescript
+const result = await redis.persist("nonexistent");
+console.log(result); // 0
+```
+
+### Make a temporary key permanent
+
+```typescript
+// Set a key with expiration
+await redis.set("session:user123", "data", { ex: 3600 });
+
+// Later, decide to keep it permanently
+await redis.persist("session:user123");
+
+// Key will now never expire
+const ttl = await redis.ttl("session:user123");
+console.log(ttl); // -1
+```
+
+## See Also
+
+- [expire](/api/commands/expire) - Set a key's time to live
+- [ttl](/api/commands/ttl) - Get the time to live for a key

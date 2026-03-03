@@ -1,0 +1,148 @@
+---
+title: 'setrange'
+description: 'Overwrite part of a string at a specific offset'
+---
+
+## Description
+
+Overwrites part of the string stored at key, starting at the specified offset, for the entire length of value. If the offset is larger than the current length of the string at key, the string is padded with zero-bytes to make offset fit. Non-existing keys are considered as empty strings.
+
+## Syntax
+
+```typescript
+redis.setrange(key: string, offset: number, value: string): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the string to modify
+</ParamField>
+
+<ParamField path="offset" type="number" required>
+  The position at which to start overwriting (0-based)
+</ParamField>
+
+<ParamField path="value" type="string" required>
+  The string to write at the specified offset
+</ParamField>
+
+## Returns
+
+<ResponseField name="length" type="number">
+  The length of the string after it was modified by the command
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set an initial string
+await redis.set('message', 'Hello World');
+
+// Overwrite starting at offset 6
+const length = await redis.setrange('message', 6, 'Redis');
+console.log(length); // 11
+
+const result = await redis.get('message');
+console.log(result); // "Hello Redis"
+```
+
+### Overwrite in the Middle
+
+```typescript
+await redis.set('text', 'Hello, World!');
+
+// Replace "World" with "there"
+await redis.setrange('text', 7, 'there');
+
+const result = await redis.get('text');
+console.log(result); // "Hello, there!"
+```
+
+### Padding with Zero-Bytes
+
+```typescript
+// Start with a short string
+await redis.set('key', 'abc');
+
+// Set range beyond current length
+const length = await redis.setrange('key', 10, 'xyz');
+console.log(length); // 13
+
+const result = await redis.get('key');
+console.log(result); // "abc\x00\x00\x00\x00\x00\x00\x00xyz"
+// The string is padded with zero-bytes (\x00) from position 3 to 9
+```
+
+### Setting on Non-Existent Key
+
+```typescript
+// SETRANGE on a non-existent key creates it
+const length = await redis.setrange('newkey', 0, 'Hello');
+console.log(length); // 5
+
+const result = await redis.get('newkey');
+console.log(result); // "Hello"
+
+// SETRANGE with offset on non-existent key
+const length2 = await redis.setrange('another', 5, 'Redis');
+console.log(length2); // 10
+
+const result2 = await redis.get('another');
+console.log(result2); // "\x00\x00\x00\x00\x00Redis"
+```
+
+### Updating Specific Fields
+
+```typescript
+// Store a fixed-format string (e.g., status flags)
+await redis.set('flags', '0000000000');
+
+// Update specific positions
+await redis.setrange('flags', 0, '1'); // Set first flag
+await redis.setrange('flags', 5, '1'); // Set sixth flag
+
+const flags = await redis.get('flags');
+console.log(flags); // "1000010000"
+```
+
+### Modifying Structured Data
+
+```typescript
+// Store a date in format YYYY-MM-DD
+await redis.set('date', '2024-01-15');
+
+// Update just the day
+await redis.setrange('date', 8, '20');
+
+const updated = await redis.get('date');
+console.log(updated); // "2024-01-20"
+```
+
+## Notes
+
+- The offset is zero-based
+- If the key does not exist, it is created as an empty string before performing the operation
+- If the offset is beyond the current string length, the string is padded with null bytes (`\x00`)
+- Time complexity is O(1), not counting the time taken to copy the new string in place
+- Returns the length of the string after modification
+- Be careful when using large offsets on non-existent keys, as this will create a large string filled with zero-bytes
+
+## Related Commands
+
+- [getrange](/api/commands/getrange) - Get a substring of the string stored at a key
+- [append](/api/commands/append) - Append a value to a key
+- [set](/api/commands/set) - Set the string value of a key
+
+## Redis Documentation
+
+For more information, see the [Redis SETRANGE documentation](https://redis.io/commands/setrange).

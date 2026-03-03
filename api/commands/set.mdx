@@ -1,0 +1,187 @@
+---
+title: 'set'
+description: 'Set the string value of a key'
+---
+
+## Description
+
+Set key to hold the string value. If key already holds a value, it is overwritten, regardless of its type. Any previous time to live associated with the key is discarded on successful SET operation.
+
+## Syntax
+
+```typescript
+redis.set<TData>(
+  key: string,
+  value: TData,
+  opts?: SetCommandOptions
+): Promise<TData | "OK" | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to set
+</ParamField>
+
+<ParamField path="value" type="TData" required>
+  The value to store. Can be a string, number, object, or any serializable data
+</ParamField>
+
+<ParamField path="opts" type="SetCommandOptions">
+  Optional configuration for the SET command
+
+  <Expandable title="properties">
+    <ParamField path="ex" type="number">
+      Set the specified expire time, in seconds (a positive integer)
+    </ParamField>
+
+    <ParamField path="px" type="number">
+      Set the specified expire time, in milliseconds (a positive integer)
+    </ParamField>
+
+    <ParamField path="exat" type="number">
+      Set the specified Unix time at which the key will expire, in seconds (a positive integer)
+    </ParamField>
+
+    <ParamField path="pxat" type="number">
+      Set the specified Unix time at which the key will expire, in milliseconds (a positive integer)
+    </ParamField>
+
+    <ParamField path="nx" type="boolean">
+      Only set the key if it does not already exist
+    </ParamField>
+
+    <ParamField path="xx" type="boolean">
+      Only set the key if it already exists
+    </ParamField>
+
+    <ParamField path="keepTtl" type="boolean">
+      Retain the time to live associated with the key
+    </ParamField>
+
+    <ParamField path="get" type="boolean">
+      Return the old string stored at key, or `null` if key did not exist
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="TData" type="type">
+  The type of the value being stored
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="TData | 'OK' | null">
+  - Returns `"OK"` if SET was executed correctly
+  - Returns `null` if the SET operation was not performed (due to `nx` or `xx` conditions)
+  - Returns the old value if the `get` option was specified
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Simple string set
+await redis.set('greeting', 'Hello, World!');
+// Returns: "OK"
+
+// Set a number
+await redis.set('counter', 42);
+// Returns: "OK"
+```
+
+### Set with Expiration
+
+```typescript
+// Expire in 60 seconds
+await redis.set('session:abc', 'user-data', { ex: 60 });
+
+// Expire in 5000 milliseconds
+await redis.set('temp:key', 'value', { px: 5000 });
+
+// Expire at specific Unix timestamp (seconds)
+const expirationTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+await redis.set('token', 'secret-token', { exat: expirationTime });
+
+// Expire at specific Unix timestamp (milliseconds)
+const expirationTimeMs = Date.now() + 3600000; // 1 hour from now
+await redis.set('token', 'secret-token', { pxat: expirationTimeMs });
+```
+
+### Conditional Set
+
+```typescript
+// Only set if key doesn't exist (SET NX)
+const result1 = await redis.set('key', 'value', { nx: true });
+console.log(result1); // "OK" if key didn't exist, null otherwise
+
+// Only set if key exists (SET XX)
+const result2 = await redis.set('key', 'new-value', { xx: true });
+console.log(result2); // "OK" if key existed, null otherwise
+```
+
+### Set and Get Old Value
+
+```typescript
+// Set initial value
+await redis.set('score', 100);
+
+// Set new value and get the old one
+const oldValue = await redis.set('score', 200, { get: true });
+console.log(oldValue); // 100
+```
+
+### Working with Objects
+
+```typescript
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+const user: User = {
+  id: 1,
+  name: 'Alice',
+  email: 'alice@example.com'
+};
+
+// Store object with 1 hour expiration
+await redis.set('user:1', user, { ex: 3600 });
+```
+
+### Keep TTL
+
+```typescript
+// Set a key with expiration
+await redis.set('key', 'value1', { ex: 300 }); // 5 minutes
+
+// Update the value but keep the remaining TTL
+await redis.set('key', 'value2', { keepTtl: true });
+// The key still has the same remaining TTL from the first SET
+```
+
+## Notes
+
+- The `ex`, `px`, `exat`, `pxat`, and `keepTtl` options are mutually exclusive
+- The `nx` and `xx` options are mutually exclusive
+- When using the `get` option, the command returns the old value instead of `"OK"`
+
+## Related Commands
+
+- [get](/api/commands/get) - Get the value of a key
+- [mset](/api/commands/mset) - Set multiple keys to multiple values
+
+## Redis Documentation
+
+For more information, see the [Redis SET documentation](https://redis.io/commands/set).

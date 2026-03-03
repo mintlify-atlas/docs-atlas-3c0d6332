@@ -1,0 +1,301 @@
+---
+title: Deno
+description: Use Upstash Redis SDK in Deno and Deno Deploy
+---
+
+The Upstash Redis SDK works seamlessly with Deno and Deno Deploy without any additional configuration.
+
+## Installation
+
+Import directly from a CDN:
+
+<Tabs>
+  <Tab title="esm.sh (Recommended)">
+    ```typescript
+    import { Redis } from "https://esm.sh/@upstash/redis@latest";
+    ```
+  </Tab>
+
+  <Tab title="Specific Version">
+    ```typescript
+    import { Redis } from "https://esm.sh/@upstash/redis@1.30.2";
+    ```
+  </Tab>
+
+  <Tab title="deno.land/x">
+    ```typescript
+    import { Redis } from "https://deno.land/x/upstash_redis/mod.ts";
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Using `@latest` ensures you always get the newest version. For production, consider pinning to a specific version.
+</Note>
+
+## Quick Start
+
+<Steps>
+  <Step title="Import the SDK">
+    ```typescript
+    import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+    import { Redis } from "https://esm.sh/@upstash/redis@latest";
+    ```
+  </Step>
+
+  <Step title="Create a Redis instance">
+    <Tabs>
+      <Tab title="From Environment">
+        ```typescript
+        const redis = Redis.fromEnv();
+        ```
+
+        This reads from:
+        - `UPSTASH_REDIS_REST_URL` or `KV_REST_API_URL`
+        - `UPSTASH_REDIS_REST_TOKEN` or `KV_REST_API_TOKEN`
+      </Tab>
+
+      <Tab title="With Credentials">
+        ```typescript
+        const redis = new Redis({
+          url: "<UPSTASH_REDIS_REST_URL>",
+          token: "<UPSTASH_REDIS_REST_TOKEN>",
+        });
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Use Redis in your handler">
+    ```typescript
+    serve(async (_req: Request) => {
+      const redis = Redis.fromEnv();
+      const counter = await redis.incr("deno-deploy-counter");
+
+      return new Response(JSON.stringify({ counter }), { status: 200 });
+    });
+    ```
+  </Step>
+</Steps>
+
+## Configuration Options
+
+Deno uses the Node.js implementation, supporting all standard configuration options:
+
+```typescript
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_REST_URL>",
+  token: "<UPSTASH_REDIS_REST_TOKEN>",
+  
+  // Enable keep-alive connections
+  keepAlive: true,
+  
+  // Abort requests using AbortSignal
+  signal: abortController.signal,
+  
+  // Enable latency logging
+  latencyLogging: true,
+  
+  // Automatic deserialization of JSON values
+  automaticDeserialization: true,
+  
+  // Read-your-writes consistency
+  readYourWrites: true,
+  
+  // Enable telemetry (default: true)
+  enableTelemetry: true,
+  
+  // Configure retry behavior
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 50,
+  },
+  
+  // Response encoding
+  responseEncoding: "base64",
+  
+  // Cache control
+  cache: "no-store",
+});
+```
+
+### Using fromEnv() with Options
+
+```typescript
+const redis = Redis.fromEnv({
+  keepAlive: true,
+  latencyLogging: true,
+  automaticDeserialization: true,
+});
+```
+
+## Complete Example
+
+```typescript
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { Redis } from "https://esm.sh/@upstash/redis@latest";
+
+serve(async (req: Request) => {
+  const redis = Redis.fromEnv();
+  const url = new URL(req.url);
+
+  // Increment page view counter
+  const counter = await redis.incr("deno-deploy-counter");
+
+  // Store visit information
+  await redis.lpush("recent-visits", {
+    path: url.pathname,
+    timestamp: Date.now(),
+  });
+
+  // Get recent visits
+  const recentVisits = await redis.lrange("recent-visits", 0, 9);
+
+  return new Response(
+    JSON.stringify({
+      counter,
+      path: url.pathname,
+      recentVisits,
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+});
+```
+
+## Environment Variables
+
+Set environment variables for your Deno Deploy project:
+
+<Steps>
+  <Step title="Via Deno Deploy Dashboard">
+    1. Go to your project settings
+    2. Navigate to **Environment Variables**
+    3. Add:
+       - `UPSTASH_REDIS_REST_URL`: Your Redis REST URL
+       - `UPSTASH_REDIS_REST_TOKEN`: Your Redis REST token
+  </Step>
+
+  <Step title="Local Development (.env)">
+    Create a `.env` file:
+
+    ```bash
+    UPSTASH_REDIS_REST_URL=https://your-redis-url.upstash.io
+    UPSTASH_REDIS_REST_TOKEN=your-token-here
+    ```
+
+    Load it using:
+
+    ```bash
+    deno run --allow-net --allow-env --env .env your-script.ts
+    ```
+  </Step>
+
+  <Step title="Via CLI">
+    ```bash
+    deno run --allow-net --allow-env \
+      --env=UPSTASH_REDIS_REST_URL=https://... \
+      --env=UPSTASH_REDIS_REST_TOKEN=... \
+      your-script.ts
+    ```
+  </Step>
+</Steps>
+
+## Permissions
+
+Deno requires explicit permissions. Your script needs:
+
+```bash
+deno run --allow-net --allow-env your-script.ts
+```
+
+- `--allow-net`: Required for HTTP requests to Upstash Redis
+- `--allow-env`: Required for reading environment variables (when using `fromEnv()`)
+
+## Deployment to Deno Deploy
+
+<Steps>
+  <Step title="Install deployctl">
+    ```bash
+    deno install --allow-read --allow-write --allow-env --allow-net --allow-run \
+      --no-check -r -f https://deno.land/x/deploy/deployctl.ts
+    ```
+  </Step>
+
+  <Step title="Deploy your project">
+    ```bash
+    deployctl deploy --project=your-project-name your-script.ts
+    ```
+  </Step>
+
+  <Step title="Set environment variables">
+    Use the Deno Deploy dashboard to add your `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
+  </Step>
+</Steps>
+
+## Type Safety
+
+The SDK includes TypeScript definitions. Deno will automatically use them:
+
+```typescript
+import type { Redis } from "https://esm.sh/@upstash/redis@latest";
+
+const redis: Redis = Redis.fromEnv();
+
+// Type-safe operations
+const count: number | null = await redis.get<number>("counter");
+const list: string[] = await redis.lrange("mylist", 0, -1);
+```
+
+## Testing
+
+Example test file:
+
+```typescript
+import { assertEquals } from "https://deno.land/std@0.224.0/testing/asserts.ts";
+import { Redis } from "https://esm.sh/@upstash/redis@latest";
+
+Deno.test("Redis operations", async () => {
+  const redis = new Redis({
+    url: Deno.env.get("UPSTASH_REDIS_REST_URL")!,
+    token: Deno.env.get("UPSTASH_REDIS_REST_TOKEN")!,
+  });
+
+  await redis.set("test-key", "test-value");
+  const value = await redis.get("test-key");
+  
+  assertEquals(value, "test-value");
+  
+  await redis.del("test-key");
+});
+```
+
+Run tests:
+
+```bash
+deno test --allow-net --allow-env
+```
+
+## Platform Detection
+
+The SDK detects Deno and reports appropriate telemetry. To disable:
+
+```typescript
+const redis = Redis.fromEnv({
+  enableTelemetry: false,
+});
+```
+
+Or set the environment variable:
+
+```bash
+UPSTASH_DISABLE_TELEMETRY=1
+```
+
+## Related
+
+- [Deno Example](https://github.com/upstash/redis-js/tree/main/examples/deno) - Complete example on GitHub
+- [Deno Deploy Documentation](https://deno.com/deploy/docs) - Official Deno Deploy docs
+- [Configuration](/concepts/client-configuration) - Complete configuration reference

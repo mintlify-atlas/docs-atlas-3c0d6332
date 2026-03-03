@@ -1,0 +1,208 @@
+---
+title: 'HMGET'
+description: 'Get multiple hash field values'
+---
+
+## Usage
+
+Returns the values associated with the specified fields in the hash stored at `key`. Returns an object with the requested fields.
+
+```typescript
+await redis.hmget(key, ...fields);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+<ParamField path="fields" type="string[]" required>
+  One or more field names to retrieve from the hash
+</ParamField>
+
+## Response
+
+<ResponseField name="object" type="TData | null">
+  An object containing the requested fields and their values. Fields that do not exist will have `null` values.
+  
+  Returns `null` if the hash does not exist or all requested fields are empty.
+  
+  The return type is a record where keys are the requested field names and values are the stored values (or `null` if the field doesn't exist).
+</ResponseField>
+
+## Examples
+
+### Get multiple fields
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set hash fields
+await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  age: 30,
+  city: 'New York',
+  country: 'USA'
+});
+
+// Get specific fields
+const user = await redis.hmget('user:1000', 'name', 'email', 'age');
+console.log(user);
+// { name: 'Alice', email: 'alice@example.com', age: 30 }
+```
+
+### Handle missing fields
+
+```typescript
+// Request fields that may not exist
+const data = await redis.hmget('user:1000', 'name', 'phone', 'address');
+console.log(data);
+// { name: 'Alice', phone: null, address: null }
+```
+
+### Working with typed data
+
+```typescript
+interface UserData {
+  name: string | null;
+  email: string | null;
+  age: number | null;
+}
+
+const user = await redis.hmget<UserData>('user:1000', 'name', 'email', 'age');
+
+if (user) {
+  console.log(`Name: ${user.name}`);
+  console.log(`Email: ${user.email}`);
+  console.log(`Age: ${user.age}`);
+}
+```
+
+### Fetch subset of large hash
+
+```typescript
+// Only get the fields you need instead of the entire hash
+const essentials = await redis.hmget(
+  'product:500',
+  'name',
+  'price',
+  'inStock'
+);
+
+if (essentials?.inStock) {
+  console.log(`${essentials.name}: $${essentials.price}`);
+}
+```
+
+### Non-existent hash
+
+```typescript
+const result = await redis.hmget('user:9999', 'name', 'email');
+console.log(result); // null
+```
+
+### All fields are null
+
+```typescript
+// If all requested fields don't exist, returns null
+const result = await redis.hmget('user:1000', 'field1', 'field2', 'field3');
+console.log(result); // null (if none of these fields exist)
+```
+
+### Efficient partial reads
+
+```typescript
+// Instead of HGETALL which gets all fields
+// const allData = await redis.hgetall('session:abc123');
+
+// Use HMGET to get only what you need
+const session = await redis.hmget(
+  'session:abc123',
+  'userId',
+  'createdAt',
+  'expiresAt'
+);
+
+if (session) {
+  console.log(`User ${session.userId} session expires at ${session.expiresAt}`);
+}
+```
+
+### Build partial objects
+
+```typescript
+interface UserProfile {
+  name: string | null;
+  bio: string | null;
+  avatar: string | null;
+}
+
+const profile = await redis.hmget<UserProfile>(
+  'user:1000',
+  'name',
+  'bio',
+  'avatar'
+);
+
+if (profile) {
+  // Use only the fields you need
+  const displayName = profile.name || 'Anonymous';
+  const displayBio = profile.bio || 'No bio available';
+  
+  console.log(`${displayName}: ${displayBio}`);
+}
+```
+
+### Batch read from multiple hashes
+
+```typescript
+// Efficiently read specific fields from multiple users
+const [user1, user2, user3] = await Promise.all([
+  redis.hmget('user:1000', 'name', 'email'),
+  redis.hmget('user:2000', 'name', 'email'),
+  redis.hmget('user:3000', 'name', 'email'),
+]);
+
+console.log([user1, user2, user3]);
+```
+
+### Check field values efficiently
+
+```typescript
+const settings = await redis.hmget(
+  'user:1000:settings',
+  'theme',
+  'language',
+  'timezone'
+);
+
+if (settings) {
+  const theme = settings.theme || 'light';
+  const language = settings.language || 'en';
+  const timezone = settings.timezone || 'UTC';
+  
+  console.log({ theme, language, timezone });
+}
+```
+
+## Notes
+
+- More efficient than multiple `HGET` calls when you need multiple fields
+- More efficient than `HGETALL` when you only need a subset of fields
+- Returns `null` for the entire result if the hash doesn't exist or all fields are null
+- Individual fields that don't exist have `null` values in the returned object
+- Values are automatically parsed from JSON when possible
+
+## See Also
+
+- [HGET](/api/commands/hget) - Get a single hash field value
+- [HGETALL](/api/commands/hgetall) - Get all fields and values in a hash
+- [HSET](/api/commands/hset) - Set hash field values
+- [HMSET](/api/commands/hmset) - Set multiple hash fields

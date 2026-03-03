@@ -1,0 +1,125 @@
+---
+title: 'LPOP'
+description: 'Remove and return the first element(s) of a list'
+---
+
+## Overview
+
+Removes and returns the first element of the list stored at `key`. When a `count` is provided, removes and returns up to `count` elements.
+
+## Method Signature
+
+```typescript
+lpop<TData = string>(key: string): Promise<TData | null>
+lpop<TData = string[]>(key: string, count: number): Promise<TData | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the list.
+</ParamField>
+
+<ParamField path="count" type="number">
+  The number of elements to pop. When specified, returns an array of elements instead of a single element.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="element" type="TData | null">
+  When called without `count`: The first element of the list, or `null` if the list is empty or does not exist.
+  
+  When called with `count`: An array of popped elements, or `null` if the list is empty or does not exist.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Set up a list
+await redis.lpush('mylist', 'world', 'hello');
+// List is: ['hello', 'world']
+
+// Pop the first element
+const element = await redis.lpop('mylist');
+console.log(element); // 'hello'
+
+// Pop from empty list
+const empty = await redis.lpop('nonexistent');
+console.log(empty); // null
+```
+
+### Pop Multiple Elements
+
+```typescript
+// Set up a list
+await redis.rpush('queue', 'job-1', 'job-2', 'job-3', 'job-4');
+
+// Pop multiple elements
+const jobs = await redis.lpop<string[]>('queue', 2);
+console.log(jobs); // ['job-1', 'job-2']
+```
+
+### Working with Objects
+
+```typescript
+interface Task {
+  id: string;
+  title: string;
+  priority: number;
+}
+
+// Add tasks
+await redis.lpush<Task>('tasks', {
+  id: '123',
+  title: 'Complete documentation',
+  priority: 1,
+});
+
+// Pop the task
+const task = await redis.lpop<Task>('tasks');
+console.log(task?.title); // 'Complete documentation'
+```
+
+### Queue Processing
+
+```typescript
+// Process items from the head of a queue
+while (true) {
+  const item = await redis.lpop('queue:processing');
+  
+  if (!item) {
+    break; // Queue is empty
+  }
+  
+  // Process the item
+  await processItem(item);
+}
+```
+
+### Batch Processing
+
+```typescript
+// Process multiple items at once
+const batchSize = 10;
+const batch = await redis.lpop<string[]>('queue:batch', batchSize);
+
+if (batch) {
+  await Promise.all(batch.map(item => processItem(item)));
+}
+```
+
+## See Also
+
+- [RPOP](/api/commands/rpop) - Remove and return the last element of a list
+- [LPUSH](/api/commands/lpush) - Insert elements at the head of a list
+- [LRANGE](/api/commands/lrange) - Get a range of elements from a list
+- [LLEN](/api/commands/llen) - Get the length of a list

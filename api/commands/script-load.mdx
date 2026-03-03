@@ -1,0 +1,266 @@
+---
+title: SCRIPT LOAD
+description: Load a Lua script into Redis without executing it
+---
+
+## Usage
+
+```typescript
+await redis.scriptLoad(script);
+```
+
+Loads a Lua script into the Redis server's script cache without executing it. Returns the SHA-1 hash of the script, which can be used with [EVALSHA](/api/commands/evalsha) to execute the script later.
+
+## Parameters
+
+<ParamField path="script" type="string" required>
+  The Lua script to load into the server cache.
+</ParamField>
+
+## Response
+
+<ResponseField name="sha1" type="string">
+  The SHA-1 hash of the loaded script. This hash can be used with EVALSHA to execute the script.
+</ResponseField>
+
+## Examples
+
+### Load a Simple Script
+
+```typescript
+const script = "return ARGV[1]";
+const sha1 = await redis.scriptLoad(script);
+
+console.log(sha1); // e.g., "4e6d8fc8bb01276962cce5371fa795a7763657ae"
+
+// Now execute it using EVALSHA
+const result = await redis.evalsha(sha1, [], ["Hello World"]);
+console.log(result); // "Hello World"
+```
+
+### Load a Counter Script
+
+```typescript
+const counterScript = `
+  local current = redis.call('GET', KEYS[1]) or 0
+  local next = current + tonumber(ARGV[1])
+  redis.call('SET', KEYS[1], next)
+  return next
+`;
+
+const sha1 = await redis.scriptLoad(counterScript);
+
+// Execute the cached script multiple times
+const count1 = await redis.evalsha(sha1, ["counter"], ["1"]);
+const count2 = await redis.evalsha(sha1, ["counter"], ["5"]);
+const count3 = await redis.evalsha(sha1, ["counter"], ["10"]);
+
+console.log(count3); // 16 (1 + 5 + 10)
+```
+
+### Load Multiple Scripts
+
+```typescript
+const scripts = {
+  increment: `
+    local val = redis.call('INCR', KEYS[1])
+    return val
+  `,
+  decrement: `
+    local val = redis.call('DECR', KEYS[1])
+    return val
+  `,
+  reset: `
+    redis.call('SET', KEYS[1], 0)
+    return 0
+  `
+};
+
+// Load all scripts and store their hashes
+const hashes = {
+  increment: await redis.scriptLoad(scripts.increment),
+  decrement: await redis.scriptLoad(scripts.decrement),
+  reset: await redis.scriptLoad(scripts.reset)
+};
+
+// Use the scripts
+await redis.evalsha(hashes.reset, ["counter"], []);
+const val1 = await redis.evalsha(hashes.increment, ["counter"], []);
+const val2 = await redis.evalsha(hashes.increment, ["counter"], []);
+const val3 = await redis.evalsha(hashes.decrement, ["counter"], []);
+
+console.log(val3); // 1
+```
+
+### Atomic Multi-Key Operations
+
+```typescript
+const transferScript = `
+  local from_balance = tonumber(redis.call('GET', KEYS[1]) or 0)
+  local amount = tonumber(ARGV[1])
+  
+  if from_balance >= amount then
+    redis.call('DECRBY', KEYS[1], amount)
+    redis.call('INCRBY', KEYS[2], amount)
+    return 1
+  else
+    return 0
+  end
+`;
+
+const sha1 = await redis.scriptLoad(transferScript);
+
+// Initialize balances
+await redis.set("account:alice", "100");
+await redis.set("account:bob", "50");
+
+// Transfer 30 from Alice to Bob
+const success = await redis.evalsha(
+  sha1,
+  ["account:alice", "account:bob"],
+  ["30"]
+);
+
+if (success === 1) {
+  console.log("Transfer successful");
+  const aliceBalance = await redis.get("account:alice"); // "70"
+  const bobBalance = await redis.get("account:bob"); // "80"
+}
+```
+
+### Complex Data Processing
+
+```typescript
+const batchUpdateScript = `
+  local key_prefix = ARGV[1]
+  local count = tonumber(ARGV[2])
+  local value = ARGV[3]
+  
+  for i = 1, count do
+    local key = key_prefix .. ':' .. i
+    redis.call('SET', key, value)
+  end
+  
+  return count
+`;
+
+const sha1 = await redis.scriptLoad(batchUpdateScript);
+
+// Set user:1 through user:100 to "active"
+const updated = await redis.evalsha(
+  sha1,
+  [],
+  ["user", "100", "active"]
+);
+
+console.log(`Updated ${updated} keys`);
+```
+
+## When to Use SCRIPT LOAD
+
+### Good Use Cases
+
+1. **Frequently executed scripts**: Load once, execute many times
+2. **Application startup**: Pre-load all scripts your application needs
+3. **Performance optimization**: Reduce bandwidth and parsing overhead
+4. **Complex atomic operations**: Ensure scripts are available before use
+
+### Example: Application Initialization
+
+```typescript
+class RedisScripts {
+  private hashes: Record<string, string> = {};
+  
+  async initialize(redis: Redis) {
+    const scripts = {
+      incrementCounter: `
+        local val = redis.call('INCR', KEYS[1])
+        return val
+      `,
+      checkAndSet: `
+        local current = redis.call('GET', KEYS[1])
+        if current == ARGV[1] then
+          redis.call('SET', KEYS[1], ARGV[2])
+          return 1
+        end
+        return 0
+      `,
+      getMultiple: `
+        local results = {}
+        for i, key in ipairs(KEYS) do
+          results[i] = redis.call('GET', key)
+        end
+        return results
+      `
+    };
+    
+    // Load all scripts at startup
+    for (const [name, script] of Object.entries(scripts)) {
+      this.hashes[name] = await redis.scriptLoad(script);
+    }
+  }
+  
+  async incrementCounter(redis: Redis, key: string) {
+    return redis.evalsha(this.hashes.incrementCounter, [key], []);
+  }
+  
+  async checkAndSet(
+    redis: Redis,
+    key: string,
+    expected: string,
+    newValue: string
+  ) {
+    return redis.evalsha(
+      this.hashes.checkAndSet,
+      [key],
+      [expected, newValue]
+    );
+  }
+  
+  async getMultiple(redis: Redis, keys: string[]) {
+    return redis.evalsha(this.hashes.getMultiple, keys, []);
+  }
+}
+
+// Usage
+const scripts = new RedisScripts();
+await scripts.initialize(redis);
+
+const count = await scripts.incrementCounter(redis, "visitors");
+```
+
+## Script Caching Behavior
+
+- Scripts are cached on the Redis server until:
+  - The server restarts
+  - The script cache is explicitly flushed
+  - Memory pressure causes eviction (rare)
+
+- Scripts are **not** automatically replicated to read replicas. If using read replicas, you must load scripts on each instance.
+
+## Using the Script Class
+
+Instead of manually managing SHA-1 hashes, use the `Script` class:
+
+```typescript
+const script = redis.createScript<number>(`
+  local current = redis.call('GET', KEYS[1]) or 0
+  local next = current + tonumber(ARGV[1])
+  redis.call('SET', KEYS[1], next)
+  return next
+`);
+
+// The Script class automatically computes and caches the SHA-1 hash
+const result = await script.exec(["counter"], ["1"]);
+```
+
+The `Script` class:
+- Automatically computes the SHA-1 hash
+- Optimistically tries EVALSHA first
+- Falls back to EVAL if the script isn't loaded
+- Caches the script on the server after first use
+
+## See Also
+
+- [EVAL](/api/commands/eval) - Execute a Lua script
+- [EVALSHA](/api/commands/evalsha) - Execute a cached script by SHA-1 hash

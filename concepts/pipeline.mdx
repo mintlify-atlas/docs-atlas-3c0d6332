@@ -1,0 +1,322 @@
+---
+title: Pipeline
+description: Batch multiple Redis commands into a single HTTP request for improved performance
+---
+
+## Overview
+
+Pipelining allows you to send multiple Redis commands in a single HTTP request instead of making separate requests for each command. This dramatically reduces network latency when executing multiple operations.
+
+## Why use pipelines?
+
+Without pipelining, each command requires a separate HTTP round-trip:
+
+```typescript
+// 3 separate HTTP requests - slow
+await redis.set("key1", "value1");  // Request 1
+await redis.set("key2", "value2");  // Request 2
+await redis.get("key1");            // Request 3
+```
+
+With pipelining, all commands are sent together:
+
+```typescript
+// 1 HTTP request - fast
+const pipeline = redis.pipeline();
+pipeline.set("key1", "value1");
+pipeline.set("key2", "value2");
+pipeline.get("key1");
+const results = await pipeline.exec();
+// ["OK", "OK", "value1"]
+```
+
+## Basic usage
+
+Create a pipeline, add commands, and execute:
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({ url, token });
+
+// Create pipeline
+const pipeline = redis.pipeline();
+
+// Add commands
+pipeline.set("user:1:name", "Alice");
+pipeline.set("user:1:email", "alice@example.com");
+pipeline.set("user:1:age", 30);
+pipeline.get("user:1:name");
+
+// Execute all commands
+const results = await pipeline.exec();
+console.log(results);
+// ["OK", "OK", "OK", "Alice"]
+```
+
+## Chaining syntax
+
+You can chain commands for a more concise syntax:
+
+```typescript
+const results = await redis.pipeline()
+  .set("key1", "value1")
+  .set("key2", "value2")
+  .get("key1")
+  .incr("counter")
+  .exec();
+
+console.log(results);
+// ["OK", "OK", "value1", 1]
+```
+
+## Type inference
+
+When you chain all commands, TypeScript automatically infers the return types:
+
+```typescript
+const results = await redis.pipeline()
+  .set("greeting", { message: "hello" })
+  .get<{ message: string }>("greeting")
+  .exec();
+
+// results is typed as ["OK", { message: string }]
+const greeting = results[1];
+console.log(greeting.message); // TypeScript knows this is a string
+```
+
+For manual type specification:
+
+```typescript
+const p = redis.pipeline();
+p.set("key", { greeting: "hello" });
+p.get("key");
+
+const results = await p.exec<["OK", { greeting: string }]>();
+const data = results[1];
+console.log(data.greeting); // TypeScript knows the structure
+```
+
+## All Redis commands supported
+
+Pipelines support all Redis commands:
+
+```typescript
+const results = await redis.pipeline()
+  // Strings
+  .set("key", "value")
+  .get("key")
+  .incr("counter")
+  
+  // Hashes
+  .hset("user:1", { name: "Alice", age: 30 })
+  .hget("user:1", "name")
+  
+  // Lists
+  .lpush("queue", "task1")
+  .lpush("queue", "task2")
+  .lrange("queue", 0, -1)
+  
+  // Sets
+  .sadd("tags", "redis")
+  .sadd("tags", "database")
+  .smembers("tags")
+  
+  // Sorted sets
+  .zadd("leaderboard", { score: 100, member: "player1" })
+  .zrange("leaderboard", 0, 10)
+  
+  .exec();
+```
+
+## JSON commands in pipelines
+
+JSON commands work seamlessly in pipelines:
+
+```typescript
+const results = await redis.pipeline()
+  .json.set("user:1", "$", { name: "Alice", scores: [10, 20, 30] })
+  .json.get("user:1", "$.name")
+  .json.arrappend("user:1", "$.scores", 40)
+  .json.get("user:1")
+  .exec();
+
+console.log(results);
+// ["OK", ["Alice"], 4, { name: "Alice", scores: [10, 20, 30, 40] }]
+```
+
+## Error handling
+
+By default, if any command fails, the entire pipeline throws an error:
+
+```typescript
+try {
+  const results = await redis.pipeline()
+    .set("key1", "value1")
+    .incr("key1")  // Error: not an integer
+    .get("key2")
+    .exec();
+} catch (error) {
+  console.error("Pipeline failed:", error);
+  // Error: Command 2 [ INCR ] failed: ...
+}
+```
+
+### Keep errors
+
+To get individual errors for each command, use `keepErrors`:
+
+```typescript
+const results = await redis.pipeline()
+  .set("key1", "value1")
+  .incr("key1")  // This will error
+  .get("key2")
+  .exec({ keepErrors: true });
+
+// Check each result
+for (const [index, result] of results.entries()) {
+  if (result.error) {
+    console.error(`Command ${index} failed:`, result.error);
+  } else {
+    console.log(`Command ${index} result:`, result.result);
+  }
+}
+
+// Access specific results
+const setResult = results[0];
+if (!setResult.error) {
+  console.log(setResult.result); // "OK"
+}
+
+const incrResult = results[1];
+if (incrResult.error) {
+  console.error(incrResult.error); // Error message
+}
+```
+
+## Pipeline length
+
+Get the number of commands in a pipeline before execution:
+
+```typescript
+const pipeline = redis.pipeline();
+pipeline.set("key1", "value1");
+pipeline.set("key2", "value2");
+pipeline.get("key1");
+
+console.log(pipeline.length()); // 3
+
+await pipeline.exec();
+```
+
+## Multi-exec (transactions)
+
+For atomic execution of commands, use `multi()` instead of `pipeline()`:
+
+```typescript
+const results = await redis.multi()
+  .set("balance", 100)
+  .decrby("balance", 30)
+  .get("balance")
+  .exec();
+
+console.log(results);
+// ["OK", 70, 70]
+```
+
+<Info>
+`multi()` wraps commands in Redis `MULTI`/`EXEC`, guaranteeing atomic execution. Regular `pipeline()` commands may interleave with other clients' commands.
+</Info>
+
+## Important notes
+
+### Non-atomic execution
+
+Pipeline commands are **not atomic**. Other clients can execute commands between your pipelined commands:
+
+```typescript
+// These commands execute in order, but are NOT atomic
+const results = await redis.pipeline()
+  .get("counter")     // Returns 10
+  .incr("counter")    // Another client might increment here
+  .get("counter")     // Might not be 11 if another client modified it
+  .exec();
+```
+
+Use `multi()` for atomic transactions.
+
+### Excluded commands
+
+Some commands that return large amounts of data or require iteration cannot be pipelined:
+
+- `scan`, `hscan`, `sscan`, `zscan` - Cursor-based iteration
+- `keys` - Returns all keys
+- `hgetall`, `hkeys`, `lrange` - May return large datasets
+- `smembers` - Returns all set members
+- `zrange` - May return large ranges
+
+Use these commands individually outside of pipelines.
+
+## Performance benefits
+
+Pipelining reduces latency by eliminating network round-trips:
+
+```typescript
+// Without pipeline: 3 commands × 50ms = 150ms total
+await redis.set("a", 1);
+await redis.set("b", 2);
+await redis.set("c", 3);
+
+// With pipeline: 1 request = ~50ms total
+await redis.pipeline()
+  .set("a", 1)
+  .set("b", 2)
+  .set("c", 3)
+  .exec();
+```
+
+**When to use pipelines:**
+
+- Executing multiple independent commands
+- Batch operations (bulk writes, bulk reads)
+- Reducing latency in serverless environments
+- Optimizing high-throughput scenarios
+
+**When to use individual commands:**
+
+- Commands depend on previous results
+- Executing only one or two commands
+- Commands that return large datasets
+
+## Advanced example
+
+Batch user creation:
+
+```typescript
+async function createUsers(users: Array<{ id: string; name: string; email: string }>) {
+  const pipeline = redis.pipeline();
+  
+  for (const user of users) {
+    pipeline.hset(`user:${user.id}`, {
+      name: user.name,
+      email: user.email,
+      createdAt: Date.now(),
+    });
+    pipeline.sadd("users:all", user.id);
+    pipeline.zadd("users:by-creation", {
+      score: Date.now(),
+      member: user.id,
+    });
+  }
+  
+  const results = await pipeline.exec();
+  console.log(`Created ${users.length} users in a single request`);
+  return results;
+}
+
+await createUsers([
+  { id: "1", name: "Alice", email: "alice@example.com" },
+  { id: "2", name: "Bob", email: "bob@example.com" },
+  { id: "3", name: "Charlie", email: "charlie@example.com" },
+]);
+```

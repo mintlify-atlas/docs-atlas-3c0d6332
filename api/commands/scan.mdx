@@ -1,0 +1,197 @@
+---
+title: scan
+description: Incrementally iterate over keys
+---
+
+## Description
+
+Iterates the set of keys in the database using a cursor-based iterator. Unlike `KEYS`, `SCAN` doesn't block the server and is safe to use in production.
+
+## Method Signatures
+
+```typescript
+// Basic scan
+scan(cursor: string | number): Promise<[string, string[]]>
+
+// Scan with options (standard)
+scan(
+  cursor: string | number,
+  opts: ScanCommandOptionsStandard
+): Promise<[string, string[]]>
+
+// Scan with type information
+scan(
+  cursor: string | number,
+  opts: ScanCommandOptionsWithType
+): Promise<[string, { key: string; type: string }[]]>
+```
+
+## Parameters
+
+<ParamField path="cursor" type="string | number" required>
+  The cursor position. Use `"0"` or `0` to start a new iteration.
+</ParamField>
+
+<ParamField path="opts" type="ScanCommandOptions">
+  Optional configuration object:
+  
+  <Expandable title="options">
+    <ParamField path="match" type="string">
+      Pattern to filter keys (glob-style pattern like `"user:*"`)
+    </ParamField>
+    
+    <ParamField path="count" type="number">
+      Hint for number of keys to return per iteration (default: 10). Redis may return more or fewer keys.
+    </ParamField>
+    
+    <ParamField path="type" type="string">
+      Filter by key type: `"string"`, `"list"`, `"set"`, `"zset"`, or `"hash"`
+    </ParamField>
+    
+    <ParamField path="withType" type="boolean">
+      When `true`, includes the type of each key in the result. Changes return type to include type information.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="[string, string[]] | [string, { key: string; type: string }[]]">
+  A tuple containing:
+  1. **Next cursor** - Use this value in the next `scan` call. When `"0"`, iteration is complete.
+  2. **Keys** - Array of matching keys (or objects with key and type if `withType: true`)
+</ResponseField>
+
+## Examples
+
+### Basic iteration
+
+```typescript
+let cursor = "0";
+const allKeys: string[] = [];
+
+do {
+  const [nextCursor, keys] = await redis.scan(cursor);
+  allKeys.push(...keys);
+  cursor = nextCursor;
+} while (cursor !== "0");
+
+console.log(allKeys);
+```
+
+### Scan with pattern matching
+
+```typescript
+let cursor = "0";
+const userKeys: string[] = [];
+
+do {
+  const [nextCursor, keys] = await redis.scan(cursor, {
+    match: "user:*"
+  });
+  userKeys.push(...keys);
+  cursor = nextCursor;
+} while (cursor !== "0");
+
+console.log(userKeys);
+```
+
+### Scan with count hint
+
+```typescript
+const [cursor, keys] = await redis.scan("0", {
+  count: 100  // Request approximately 100 keys per iteration
+});
+
+console.log(`Found ${keys.length} keys, next cursor: ${cursor}`);
+```
+
+### Filter by key type
+
+```typescript
+let cursor = "0";
+const stringKeys: string[] = [];
+
+do {
+  const [nextCursor, keys] = await redis.scan(cursor, {
+    type: "string"
+  });
+  stringKeys.push(...keys);
+  cursor = nextCursor;
+} while (cursor !== "0");
+
+console.log(stringKeys);
+```
+
+### Scan with type information
+
+```typescript
+let cursor = "0";
+
+do {
+  const [nextCursor, items] = await redis.scan(cursor, {
+    withType: true
+  });
+  
+  items.forEach(({ key, type }) => {
+    console.log(`${key} is a ${type}`);
+  });
+  
+  cursor = nextCursor;
+} while (cursor !== "0");
+```
+
+### Combine options
+
+```typescript
+const [cursor, items] = await redis.scan("0", {
+  match: "user:*",
+  count: 50,
+  withType: true
+});
+
+items.forEach(({ key, type }) => {
+  console.log(`${key} (${type})`);
+});
+```
+
+### Single-pass scan
+
+```typescript
+// Get first batch of keys
+const [cursor, keys] = await redis.scan("0");
+console.log(keys);
+
+// If cursor is "0", we've seen all keys
+// Otherwise, there are more keys to fetch
+if (cursor !== "0") {
+  console.log("More keys available");
+}
+```
+
+## Cursor-Based Iteration
+
+The `SCAN` command uses cursor-based iteration:
+
+1. Start with cursor `"0"`
+2. Call `scan(cursor)` and receive `[nextCursor, keys]`
+3. Process the keys
+4. If `nextCursor` is `"0"`, iteration is complete
+5. Otherwise, call `scan(nextCursor)` and repeat
+
+<Note>
+The cursor is opaque - don't parse or manipulate it. Always use the cursor returned from the previous call.
+</Note>
+
+## Guarantees and Characteristics
+
+- **Full iteration guarantee**: A key that exists from start to finish will be returned
+- **No duplicates guarantee**: A key that is never modified will be returned only once
+- **Safe for production**: Non-blocking, suitable for large databases
+- **Variable results**: The number of keys returned per call may vary
+- **Pattern matching**: Filtering happens after fetching, so you may get empty results
+
+## See Also
+
+- [keys](/api/commands/keys) - Get all keys matching a pattern (blocking)
+- [type](/api/commands/type) - Get the type of a key

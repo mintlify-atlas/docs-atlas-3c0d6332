@@ -1,0 +1,521 @@
+---
+title: Script / ScriptRO
+description: Execute Lua scripts efficiently with automatic SHA-1 caching
+---
+
+The `Script` and `ScriptRO` classes allow you to execute Lua scripts efficiently by using Redis's `EVALSHA` command, which caches scripts on the server for faster execution.
+
+## Overview
+
+Scripts provide an optimized way to execute Lua code in Redis:
+
+1. First execution attempts `EVALSHA` with the script's SHA-1 hash
+2. If the script isn't cached, falls back to `EVAL` to load and execute it
+3. Subsequent executions use the cached version via `EVALSHA`
+
+This approach minimizes bandwidth and improves performance for frequently used scripts.
+
+## Creating Scripts
+
+### Script (Read-Write)
+
+Create a script that can modify data:
+
+```typescript
+const script = redis.createScript<string>(
+  'return ARGV[1];'
+);
+```
+
+### ScriptRO (Read-Only)
+
+Create a read-only script that uses `EVAL_RO` and `EVALSHA_RO`:
+
+```typescript
+const script = redis.createScript<string>(
+  'return ARGV[1];',
+  { readonly: true }
+);
+```
+
+<ParamField path="script" type="string" required>
+  The Lua script to execute
+</ParamField>
+
+<ParamField path="options" type="{ readonly?: boolean }">
+  Script configuration options
+  
+  <Expandable title="properties">
+    <ParamField path="readonly" type="boolean" default="false">
+      If true, returns a `ScriptRO` instance that uses read-only EVAL commands. Use this for scripts that only read data and don't modify it.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="script" type="Script<TResult> | ScriptRO<TResult>">
+  A Script or ScriptRO instance based on the readonly option
+</ResponseField>
+
+## Script Class
+
+### Properties
+
+#### script
+
+The Lua script source code.
+
+```typescript
+const myScript = redis.createScript('return ARGV[1];');
+console.log(myScript.script); // 'return ARGV[1];'
+```
+
+<ResponseField name="script" type="string">
+  The Lua script source code
+</ResponseField>
+
+#### sha1
+
+<Warning>
+  **Deprecated**: This property is initialized asynchronously and may be an empty string immediately after construction. It's exposed for backwards compatibility only.
+</Warning>
+
+The SHA-1 hash of the script.
+
+```typescript
+const myScript = redis.createScript('return ARGV[1];');
+// Wait for initialization before accessing
+await new Promise(resolve => setTimeout(resolve, 100));
+console.log(myScript.sha1); // SHA-1 hash
+```
+
+<ResponseField name="sha1" type="string">
+  The SHA-1 hash of the script (may be empty if not yet initialized)
+</ResponseField>
+
+### Methods
+
+#### eval()
+
+Execute the script using the `EVAL` command (sends full script to Redis).
+
+```typescript
+const script = redis.createScript<number>(
+  'return redis.call("INCR", KEYS[1])'
+);
+
+const result = await script.eval(['counter'], []);
+// result: 1
+```
+
+<ParamField path="keys" type="string[]" required>
+  Array of Redis keys that the script will access
+</ParamField>
+
+<ParamField path="args" type="string[]" required>
+  Array of additional arguments to pass to the script
+</ParamField>
+
+<ResponseField name="result" type="TResult">
+  The script execution result
+</ResponseField>
+
+#### evalsha()
+
+Execute the script using the `EVALSHA` command (uses cached SHA-1 hash).
+
+```typescript
+const script = redis.createScript<string>(
+  'return "Hello, " .. ARGV[1]'
+);
+
+// First load the script
+await redis.scriptLoad(script.script);
+
+// Then execute by SHA-1
+const result = await script.evalsha([], ['World']);
+// result: 'Hello, World'
+```
+
+<ParamField path="keys" type="string[]" required>
+  Array of Redis keys that the script will access
+</ParamField>
+
+<ParamField path="args" type="string[]" required>
+  Array of additional arguments to pass to the script
+</ParamField>
+
+<ResponseField name="result" type="TResult">
+  The script execution result
+</ResponseField>
+
+<Warning>
+  If the script is not cached on the server, this will throw a NOSCRIPT error. Use `exec()` for automatic fallback.
+</Warning>
+
+#### exec()
+
+Optimistically execute the script with automatic fallback.
+
+1. First attempts `EVALSHA` (fast, uses cached script)
+2. If script not cached (NOSCRIPT error), falls back to `EVAL`
+3. Subsequent calls use the cached version
+
+```typescript
+const script = redis.createScript<number>(
+  `
+  local count = redis.call("INCR", KEYS[1])
+  redis.call("EXPIRE", KEYS[1], ARGV[1])
+  return count
+  `
+);
+
+// First call: uses EVAL (script not cached)
+const count1 = await script.exec(['page:views'], ['3600']);
+
+// Subsequent calls: uses EVALSHA (faster)
+const count2 = await script.exec(['page:views'], ['3600']);
+```
+
+<ParamField path="keys" type="string[]" required>
+  Array of Redis keys that the script will access. In Lua, access via `KEYS[1]`, `KEYS[2]`, etc.
+</ParamField>
+
+<ParamField path="args" type="string[]" required>
+  Array of additional arguments. In Lua, access via `ARGV[1]`, `ARGV[2]`, etc.
+</ParamField>
+
+<ResponseField name="result" type="TResult">
+  The script execution result
+</ResponseField>
+
+## ScriptRO Class
+
+The `ScriptRO` class is identical to `Script` but uses read-only commands (`EVAL_RO` and `EVALSHA_RO`). This is useful for scripts that only read data and can be executed on read replicas.
+
+### Methods
+
+#### evalRo()
+
+Execute the script using `EVAL_RO`.
+
+```typescript
+const script = redis.createScript<string[]>(
+  'return redis.call("LRANGE", KEYS[1], 0, -1)',
+  { readonly: true }
+);
+
+const items = await script.evalRo(['mylist'], []);
+```
+
+<ParamField path="keys" type="string[]" required>
+  Array of Redis keys to read
+</ParamField>
+
+<ParamField path="args" type="string[]" required>
+  Array of additional arguments
+</ParamField>
+
+<ResponseField name="result" type="TResult">
+  The script execution result
+</ResponseField>
+
+#### evalshaRo()
+
+Execute the script using `EVALSHA_RO`.
+
+```typescript
+const script = redis.createScript<number>(
+  'return redis.call("GET", KEYS[1])',
+  { readonly: true }
+);
+
+const value = await script.evalshaRo(['mykey'], []);
+```
+
+<ParamField path="keys" type="string[]" required>
+  Array of Redis keys to read
+</ParamField>
+
+<ParamField path="args" type="string[]" required>
+  Array of additional arguments
+</ParamField>
+
+<ResponseField name="result" type="TResult">
+  The script execution result
+</ResponseField>
+
+#### exec()
+
+Execute with automatic fallback (tries `EVALSHA_RO`, falls back to `EVAL_RO`).
+
+```typescript
+const script = redis.createScript<string>(
+  'return redis.call("GET", KEYS[1])',
+  { readonly: true }
+);
+
+const value = await script.exec(['mykey'], []);
+```
+
+<ParamField path="keys" type="string[]" required>
+  Array of Redis keys to read
+</ParamField>
+
+<ParamField path="args" type="string[]" required>
+  Array of additional arguments
+</ParamField>
+
+<ResponseField name="result" type="TResult">
+  The script execution result
+</ResponseField>
+
+## Usage Examples
+
+### Basic Script Execution
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
+
+const greetingScript = redis.createScript<string>(
+  'return "Hello, " .. ARGV[1] .. "!"'
+);
+
+const message = await greetingScript.exec([], ['World']);
+// message: 'Hello, World!'
+```
+
+### Atomic Counter with TTL
+
+```typescript
+const incrementCounter = redis.createScript<number>(
+  `
+  local count = redis.call("INCR", KEYS[1])
+  local ttl = redis.call("TTL", KEYS[1])
+  
+  if ttl == -1 then
+    redis.call("EXPIRE", KEYS[1], ARGV[1])
+  end
+  
+  return count
+  `
+);
+
+// Increment counter and set 1 hour expiry if not set
+const count = await incrementCounter.exec(
+  ['page:views:homepage'],
+  ['3600']
+);
+```
+
+### Conditional Operations
+
+```typescript
+const setIfHigher = redis.createScript<number>(
+  `
+  local current = redis.call("GET", KEYS[1])
+  local new = tonumber(ARGV[1])
+  
+  if current == false or tonumber(current) < new then
+    redis.call("SET", KEYS[1], new)
+    return new
+  end
+  
+  return tonumber(current)
+  `
+);
+
+const highScore = await setIfHigher.exec(
+  ['user:123:highscore'],
+  ['1500']
+);
+```
+
+### Read-Only Script for Analytics
+
+```typescript
+interface Stats {
+  views: number;
+  likes: number;
+  ratio: number;
+}
+
+const getPostStats = redis.createScript<Stats>(
+  `
+  local views = tonumber(redis.call("GET", KEYS[1] .. ":views") or "0")
+  local likes = tonumber(redis.call("GET", KEYS[1] .. ":likes") or "0")
+  local ratio = 0
+  
+  if views > 0 then
+    ratio = likes / views
+  end
+  
+  return {views, likes, ratio}
+  `,
+  { readonly: true }
+);
+
+const stats = await getPostStats.exec(['post:123'], []);
+// stats: { views: 1000, likes: 150, ratio: 0.15 }
+```
+
+### Batch Operations
+
+```typescript
+const batchIncrement = redis.createScript<number[]>(
+  `
+  local results = {}
+  
+  for i = 1, #KEYS do
+    results[i] = redis.call("INCR", KEYS[i])
+  end
+  
+  return results
+  `
+);
+
+const counters = await batchIncrement.exec(
+  ['counter:1', 'counter:2', 'counter:3'],
+  []
+);
+// counters: [1, 1, 1]
+```
+
+### Rate Limiting
+
+```typescript
+const checkRateLimit = redis.createScript<[number, number]>(
+  `
+  local key = KEYS[1]
+  local limit = tonumber(ARGV[1])
+  local window = tonumber(ARGV[2])
+  
+  local current = redis.call("INCR", key)
+  
+  if current == 1 then
+    redis.call("EXPIRE", key, window)
+  end
+  
+  local ttl = redis.call("TTL", key)
+  return {current, ttl}
+  `
+);
+
+const [requests, ttl] = await checkRateLimit.exec(
+  ['ratelimit:user:123'],
+  ['100', '60'] // 100 requests per 60 seconds
+);
+
+if (requests > 100) {
+  throw new Error(`Rate limit exceeded. Try again in ${ttl} seconds.`);
+}
+```
+
+### Complex Data Structure Operations
+
+```typescript
+const updateUserActivity = redis.createScript<void>(
+  `
+  local userId = ARGV[1]
+  local activity = ARGV[2]
+  local timestamp = ARGV[3]
+  
+  -- Update last activity
+  redis.call("HSET", "user:" .. userId, "last_activity", activity)
+  redis.call("HSET", "user:" .. userId, "last_seen", timestamp)
+  
+  -- Add to activity log
+  redis.call("ZADD", "user:" .. userId .. ":activity", timestamp, activity)
+  
+  -- Keep only last 100 activities
+  redis.call("ZREMRANGEBYRANK", "user:" .. userId .. ":activity", 0, -101)
+  `
+);
+
+await updateUserActivity.exec(
+  [],
+  ['123', 'logged_in', Date.now().toString()]
+);
+```
+
+## TypeScript Support
+
+Scripts support full TypeScript type inference:
+
+```typescript
+// Return type is inferred
+const script = redis.createScript<{ count: number; timestamp: number }>(
+  `
+  local count = redis.call("INCR", KEYS[1])
+  local time = redis.call("TIME")
+  return {count, time[1]}
+  `
+);
+
+const result = await script.exec(['counter'], []);
+// result is typed as { count: number; timestamp: number }
+```
+
+## Best Practices
+
+### 1. Use TypeScript Generics
+
+```typescript
+interface ScriptResult {
+  success: boolean;
+  value: number;
+}
+
+const script = redis.createScript<ScriptResult>(
+  '...'
+);
+```
+
+### 2. Prefer exec() Over eval()
+
+```typescript
+// Good: Automatic caching
+await script.exec(keys, args);
+
+// Avoid: Always sends full script
+await script.eval(keys, args);
+```
+
+### 3. Use Read-Only Scripts When Possible
+
+```typescript
+// For read-only operations
+const readScript = redis.createScript<string>(
+  'return redis.call("GET", KEYS[1])',
+  { readonly: true }
+);
+```
+
+### 4. Handle Errors Properly
+
+```typescript
+try {
+  const result = await script.exec(keys, args);
+} catch (error) {
+  if (error instanceof Error) {
+    console.error('Script execution failed:', error.message);
+  }
+}
+```
+
+### 5. Document Complex Scripts
+
+```typescript
+/**
+ * Atomically increment a counter and maintain top N leaderboard
+ * 
+ * @param KEYS[1] - Counter key
+ * @param KEYS[2] - Sorted set key for leaderboard
+ * @param ARGV[1] - User ID
+ * @param ARGV[2] - Maximum leaderboard size
+ */
+const updateLeaderboard = redis.createScript<number>(
+  `...`
+);
+```

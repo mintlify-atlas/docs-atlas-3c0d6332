@@ -1,0 +1,98 @@
+---
+title: 'RPUSH'
+description: 'Insert elements at the tail of a list'
+---
+
+## Overview
+
+Inserts one or more values at the tail of the list stored at `key`. If `key` does not exist, it is created as an empty list before performing the push operations.
+
+## Method Signature
+
+```typescript
+rpush<TData>(key: string, ...elements: TData[]): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the list.
+</ParamField>
+
+<ParamField path="elements" type="TData[]" required>
+  One or more elements to insert at the tail of the list. Elements are inserted one after the other, so the first element in the arguments will be inserted first.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="length" type="number">
+  The length of the list after the push operations.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Push a single element
+const length1 = await redis.rpush('mylist', 'hello');
+console.log(length1); // 1
+
+// Push multiple elements
+const length2 = await redis.rpush('mylist', 'world', 'foo');
+console.log(length2); // 3
+// List is now: ['hello', 'world', 'foo']
+```
+
+### Working with Objects
+
+```typescript
+interface Message {
+  id: string;
+  content: string;
+  timestamp: number;
+}
+
+const message: Message = {
+  id: 'msg-1',
+  content: 'Hello, world!',
+  timestamp: Date.now(),
+};
+
+const length = await redis.rpush<Message>('messages', message);
+console.log(length); // 1
+```
+
+### Building a Log Stream
+
+```typescript
+// Append log entries in chronological order
+await redis.rpush('logs:app', 'Server started');
+await redis.rpush('logs:app', 'Database connected');
+await redis.rpush('logs:app', 'Ready to accept connections');
+
+// List is now: ['Server started', 'Database connected', 'Ready to accept connections']
+```
+
+### Batch Insert
+
+```typescript
+// Insert multiple items at once
+const items = ['item1', 'item2', 'item3', 'item4'];
+const length = await redis.rpush('items', ...items);
+console.log(length); // 4
+```
+
+## See Also
+
+- [LPUSH](/api/commands/lpush) - Insert elements at the head of a list
+- [RPOP](/api/commands/rpop) - Remove and return the last element of a list
+- [LRANGE](/api/commands/lrange) - Get a range of elements from a list
+- [LLEN](/api/commands/llen) - Get the length of a list

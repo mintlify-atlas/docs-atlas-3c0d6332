@@ -1,0 +1,83 @@
+---
+title: dbsize
+description: Get the number of keys in the database
+---
+
+## Description
+
+Returns the number of keys in the currently selected database.
+
+## Method Signature
+
+```typescript
+dbsize(): Promise<number>
+```
+
+## Parameters
+
+This command takes no parameters.
+
+## Return Value
+
+<ResponseField name="result" type="number">
+  The number of keys in the database
+</ResponseField>
+
+## Examples
+
+### Get database size
+
+```typescript
+const size = await redis.dbsize();
+console.log(`Database contains ${size} keys`);
+```
+
+### Monitor database growth
+
+```typescript
+const before = await redis.dbsize();
+console.log(`Keys before: ${before}`);
+
+await redis.set("key1", "value1");
+await redis.set("key2", "value2");
+await redis.set("key3", "value3");
+
+const after = await redis.dbsize();
+console.log(`Keys after: ${after}`);
+console.log(`Added ${after - before} keys`);
+```
+
+### Check if database is empty
+
+```typescript
+const size = await redis.dbsize();
+if (size === 0) {
+  console.log("Database is empty");
+} else {
+  console.log(`Database has ${size} keys`);
+}
+```
+
+### Track deletes
+
+```typescript
+await redis.set("temp1", "value");
+await redis.set("temp2", "value");
+await redis.set("temp3", "value");
+
+const before = await redis.dbsize();
+await redis.del("temp1", "temp2", "temp3");
+const after = await redis.dbsize();
+
+console.log(`Deleted ${before - after} keys`);
+```
+
+## Performance
+
+`DBSIZE` is an O(1) operation - it returns the count instantly without scanning the keyspace.
+
+## See Also
+
+- [keys](/api/commands/keys) - Find all keys matching a pattern
+- [scan](/api/commands/scan) - Incrementally iterate over keys
+- [flushdb](/api/commands/flushdb) - Delete all keys in the database

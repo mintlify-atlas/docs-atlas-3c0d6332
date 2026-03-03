@@ -1,0 +1,148 @@
+---
+title: JSON.ARRAPPEND
+description: Append values to a JSON array
+---
+
+Appends one or more values to the end of a JSON array at the specified path.
+
+## Usage
+
+```typescript
+const newLength = await redis.json.arrappend("user:123", "$.tags", "premium", "verified");
+```
+
+## Arguments
+
+<ParamField path="key" type="string" required>
+  The key containing the JSON document
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  JSONPath expression pointing to the array to append to
+</ParamField>
+
+<ParamField path="values" type="...TData[]" required>
+  One or more values to append to the array. Can be any JSON-serializable values.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="(number | null)[]">
+  An array of numbers representing the new length of the array at each matching path. Returns `null` for paths that don't exist or aren't arrays.
+</ResponseField>
+
+## Examples
+
+### Append single value to array
+
+```typescript
+// Initial: { "tags": ["developer", "admin"] }
+const newLength = await redis.json.arrappend("user:123", "$.tags", "premium");
+console.log(newLength); // [3]
+
+// Result: { "tags": ["developer", "admin", "premium"] }
+```
+
+### Append multiple values
+
+```typescript
+const newLength = await redis.json.arrappend(
+  "user:123",
+  "$.tags",
+  "verified",
+  "active",
+  "pro"
+);
+console.log(newLength); // [6]
+
+// Result: { "tags": ["developer", "admin", "premium", "verified", "active", "pro"] }
+```
+
+### Append to nested array
+
+```typescript
+interface Order {
+  id: string;
+  items: string[];
+}
+
+const newLength = await redis.json.arrappend(
+  "order:456",
+  "$.items",
+  "item-123"
+);
+console.log(newLength); // [4]
+```
+
+### Append objects to array
+
+```typescript
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+}
+
+const newProduct: Product = {
+  id: "prod-789",
+  name: "Widget",
+  price: 29.99
+};
+
+const newLength = await redis.json.arrappend(
+  "cart:123",
+  "$.products",
+  newProduct
+);
+```
+
+### Append to multiple arrays (wildcard path)
+
+```typescript
+// Initial: {
+//   "users": [
+//     { "id": 1, "tags": ["active"] },
+//     { "id": 2, "tags": ["inactive"] }
+//   ]
+// }
+
+const newLengths = await redis.json.arrappend(
+  "data:1",
+  "$.users[*].tags",
+  "updated"
+);
+console.log(newLengths); // [2, 2]
+
+// Result: Both users now have "updated" tag appended
+```
+
+### Handle non-existent paths
+
+```typescript
+const newLength = await redis.json.arrappend(
+  "user:123",
+  "$.nonexistent",
+  "value"
+);
+console.log(newLength); // [null]
+```
+
+## JSONPath Syntax
+
+- `$.array` - Append to a top-level array
+- `$.nested.array` - Append to a nested array
+- `$.array[0].items` - Append to array within array element
+- `$..array` - Append to all matching arrays recursively
+- `$.items[*].tags` - Append to arrays within each item
+
+## Notes
+
+- The path must point to an existing array. If the path doesn't exist or points to a non-array value, `null` is returned for that path.
+- When using wildcard paths, the operation is performed on all matching arrays.
+- Values are automatically JSON-serialized before appending.
+
+## See Also
+
+- [JSON.ARRINDEX](/api/commands/json-arrindex) - Find index of value in array
+- [JSON.SET](/api/commands/json-set) - Set JSON values
+- [Redis JSON.ARRAPPEND documentation](https://redis.io/commands/json.arrappend)

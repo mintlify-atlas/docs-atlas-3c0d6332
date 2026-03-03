@@ -1,122 +1,223 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Upstash Redis",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#00E9A3",
+    "light": "#06D6A0",
+    "dark": "#00C896"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/upstash/redis-js"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/upstash/redis-js"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/client-configuration",
+              "concepts/connection",
+              "concepts/pipeline",
+              "concepts/auto-pipeline",
+              "concepts/read-your-writes"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Platform Guides",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "platforms/nodejs",
+              "platforms/cloudflare-workers",
+              "platforms/fastly",
+              "platforms/deno",
+              "platforms/vercel"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Advanced Features",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "advanced/transactions",
+              "advanced/lua-scripts",
+              "advanced/pub-sub",
+              "advanced/telemetry",
+              "advanced/error-handling"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/basic-usage",
+              "examples/aws-lambda",
+              "examples/cloudflare-workers",
+              "examples/next-js"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Client",
             "pages": [
-              "api-reference/introduction"
+              "api/redis",
+              "api/pipeline",
+              "api/script"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "String Commands",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/commands/get",
+              "api/commands/set",
+              "api/commands/append",
+              "api/commands/getrange",
+              "api/commands/setrange",
+              "api/commands/incr",
+              "api/commands/decr",
+              "api/commands/mget",
+              "api/commands/mset"
+            ]
+          },
+          {
+            "group": "Hash Commands",
+            "pages": [
+              "api/commands/hget",
+              "api/commands/hset",
+              "api/commands/hgetall",
+              "api/commands/hdel",
+              "api/commands/hexists",
+              "api/commands/hincrby",
+              "api/commands/hkeys",
+              "api/commands/hvals",
+              "api/commands/hmget",
+              "api/commands/hmset"
+            ]
+          },
+          {
+            "group": "List Commands",
+            "pages": [
+              "api/commands/lpush",
+              "api/commands/rpush",
+              "api/commands/lpop",
+              "api/commands/rpop",
+              "api/commands/lrange",
+              "api/commands/llen",
+              "api/commands/lindex",
+              "api/commands/lset"
+            ]
+          },
+          {
+            "group": "Set Commands",
+            "pages": [
+              "api/commands/sadd",
+              "api/commands/srem",
+              "api/commands/smembers",
+              "api/commands/sismember",
+              "api/commands/scard",
+              "api/commands/spop",
+              "api/commands/sinter",
+              "api/commands/sunion",
+              "api/commands/sdiff"
+            ]
+          },
+          {
+            "group": "Sorted Set Commands",
+            "pages": [
+              "api/commands/zadd",
+              "api/commands/zrem",
+              "api/commands/zrange",
+              "api/commands/zrank",
+              "api/commands/zscore",
+              "api/commands/zcard",
+              "api/commands/zincrby",
+              "api/commands/zcount"
+            ]
+          },
+          {
+            "group": "JSON Commands",
+            "pages": [
+              "api/commands/json-get",
+              "api/commands/json-set",
+              "api/commands/json-del",
+              "api/commands/json-arrappend",
+              "api/commands/json-arrindex",
+              "api/commands/json-numincrby",
+              "api/commands/json-objkeys"
+            ]
+          },
+          {
+            "group": "Geo Commands",
+            "pages": [
+              "api/commands/geoadd",
+              "api/commands/geodist",
+              "api/commands/geohash",
+              "api/commands/geopos",
+              "api/commands/geosearch"
+            ]
+          },
+          {
+            "group": "Stream Commands",
+            "pages": [
+              "api/commands/xadd",
+              "api/commands/xread",
+              "api/commands/xrange",
+              "api/commands/xlen",
+              "api/commands/xdel"
+            ]
+          },
+          {
+            "group": "Key Commands",
+            "pages": [
+              "api/commands/del",
+              "api/commands/exists",
+              "api/commands/expire",
+              "api/commands/ttl",
+              "api/commands/persist",
+              "api/commands/keys",
+              "api/commands/scan",
+              "api/commands/type"
+            ]
+          },
+          {
+            "group": "Server Commands",
+            "pages": [
+              "api/commands/ping",
+              "api/commands/echo",
+              "api/commands/dbsize",
+              "api/commands/flushdb",
+              "api/commands/time"
+            ]
+          },
+          {
+            "group": "Scripting",
+            "pages": [
+              "api/commands/eval",
+              "api/commands/evalsha",
+              "api/commands/script-load",
+              "api/commands/fcall"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

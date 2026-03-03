@@ -1,0 +1,57 @@
+---
+title: SMEMBERS
+description: Get all members of a set
+---
+
+Returns all members of the set stored at key. If the key does not exist, an empty array is returned.
+
+## Usage
+
+```typescript
+await redis.smembers(key);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The key of the set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="TData[]">
+  An array containing all members of the set
+</ResponseField>
+
+## Examples
+
+### Get all members
+
+```typescript
+await redis.sadd("myset", "hello", "world");
+const members = await redis.smembers("myset");
+console.log(members); // ["hello", "world"]
+```
+
+### Get members from empty set
+
+```typescript
+const members = await redis.smembers("nonexistent");
+console.log(members); // []
+```
+
+### Using with custom types
+
+```typescript
+await redis.sadd("numbers", 1, 2, 3, 4, 5);
+const members = await redis.smembers<number[]>("numbers");
+console.log(members); // [1, 2, 3, 4, 5]
+```
+
+### Working with user data
+
+```typescript
+await redis.sadd("users:online", "user:1", "user:2", "user:3");
+const onlineUsers = await redis.smembers("users:online");
+console.log(onlineUsers); // ["user:1", "user:2", "user:3"]
+```

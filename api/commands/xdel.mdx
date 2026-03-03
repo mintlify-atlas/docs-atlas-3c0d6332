@@ -1,0 +1,284 @@
+---
+title: xdel
+description: Delete entries from a stream by ID
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const deleted = await redis.xdel("events", "1678901234567-0");
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the stream.
+</ParamField>
+
+<ParamField path="ids" type="string | string[]" required>
+  One or more entry IDs to delete. Can be a single ID string or an array of IDs.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The number of entries actually deleted.
+  
+  IDs that don't exist are ignored and don't contribute to the count.
+</ResponseField>
+
+## Examples
+
+### Delete a single entry
+
+```typescript
+// Add an entry
+const id = await redis.xadd("events", "*", {
+  user: "alice",
+  action: "login"
+});
+
+console.log(await redis.xlen("events")); // 1
+
+// Delete it
+const deleted = await redis.xdel("events", id);
+console.log(deleted); // 1
+
+console.log(await redis.xlen("events")); // 0
+```
+
+### Delete multiple entries
+
+```typescript
+// Add several entries
+const id1 = await redis.xadd("events", "*", { event: "first" });
+const id2 = await redis.xadd("events", "*", { event: "second" });
+const id3 = await redis.xadd("events", "*", { event: "third" });
+
+console.log(await redis.xlen("events")); // 3
+
+// Delete multiple at once
+const deleted = await redis.xdel("events", [id1, id2]);
+console.log(deleted); // 2
+
+console.log(await redis.xlen("events")); // 1
+```
+
+### Handle non-existent IDs
+
+```typescript
+const id = await redis.xadd("events", "*", { data: "test" });
+
+// Try to delete existing and non-existent IDs
+const deleted = await redis.xdel("events", [
+  id,                    // Exists
+  "9999999999999-0",     // Doesn't exist
+  "9999999999998-0"      // Doesn't exist
+]);
+
+console.log(deleted); // 1 (only the existing ID was deleted)
+```
+
+### Delete all entries individually
+
+```typescript
+// Get all entry IDs
+const entries = await redis.xrange("events", "-", "+");
+const ids = Object.keys(entries);
+
+if (ids.length > 0) {
+  const deleted = await redis.xdel("events", ids);
+  console.log(`Deleted ${deleted} entries`);
+}
+
+// Stream still exists but is empty
+console.log(await redis.xlen("events")); // 0
+```
+
+### Conditional deletion based on data
+
+```typescript
+// Get all entries
+const entries = await redis.xrange("events", "-", "+");
+
+// Find entries to delete (e.g., error events)
+const idsToDelete = Object.entries(entries)
+  .filter(([_, data]) => data.level === "error")
+  .map(([id, _]) => id);
+
+if (idsToDelete.length > 0) {
+  const deleted = await redis.xdel("events", idsToDelete);
+  console.log(`Deleted ${deleted} error entries`);
+}
+```
+
+### Delete old entries by time
+
+```typescript
+// Delete entries older than 1 hour
+const oneHourAgo = Date.now() - (60 * 60 * 1000);
+
+// Get all entries
+const entries = await redis.xrange("events", "-", "+");
+
+// Filter by timestamp
+const oldIds = Object.keys(entries).filter(id => {
+  const timestamp = parseInt(id.split("-")[0]);
+  return timestamp < oneHourAgo;
+});
+
+if (oldIds.length > 0) {
+  const deleted = await redis.xdel("events", oldIds);
+  console.log(`Deleted ${deleted} old entries`);
+}
+```
+
+### Delete with verification
+
+```typescript
+const id = await redis.xadd("events", "*", { data: "test" });
+
+// Verify entry exists
+const before = await redis.xrange("events", id, id);
+console.log("Before:", Object.keys(before).length); // 1
+
+// Delete
+const deleted = await redis.xdel("events", id);
+
+if (deleted === 1) {
+  console.log("Entry successfully deleted");
+  
+  // Verify deletion
+  const after = await redis.xrange("events", id, id);
+  console.log("After:", Object.keys(after).length); // 0
+}
+```
+
+### Batch delete with error handling
+
+```typescript
+async function deleteEntries(
+  key: string,
+  ids: string[]
+): Promise<{ deleted: number; failed: string[] }> {
+  const deleted = await redis.xdel(key, ids);
+  
+  // If some IDs weren't deleted, find which ones
+  const failed: string[] = [];
+  
+  if (deleted < ids.length) {
+    // Check each ID to see if it still exists
+    for (const id of ids) {
+      const exists = await redis.xrange(key, id, id);
+      if (Object.keys(exists).length > 0) {
+        failed.push(id);
+      }
+    }
+  }
+  
+  return { deleted, failed };
+}
+
+const result = await deleteEntries("events", [
+  "1678901234567-0",
+  "nonexistent-id",
+  "1678901234568-0"
+]);
+
+console.log(`Deleted: ${result.deleted}, Failed: ${result.failed.length}`);
+```
+
+### Clear stream completely
+
+```typescript
+// Option 1: Delete all entries (stream still exists)
+const entries = await redis.xrange("events", "-", "+");
+if (Object.keys(entries).length > 0) {
+  await redis.xdel("events", Object.keys(entries));
+}
+
+// Option 2: Delete the entire stream
+await redis.del("events");
+
+// After option 1: stream exists but is empty
+// After option 2: stream doesn't exist
+```
+
+## Important Notes
+
+### XDEL vs DEL
+
+- `XDEL` removes specific entries from a stream (stream still exists)
+- `DEL` removes the entire stream key
+
+```typescript
+const id = await redis.xadd("stream", "*", { data: "test" });
+
+// Using XDEL - removes entry, stream still exists
+await redis.xdel("stream", id);
+console.log(await redis.exists("stream")); // 1 (stream exists)
+console.log(await redis.xlen("stream"));   // 0 (but empty)
+
+// Using DEL - removes entire stream
+await redis.xadd("stream", "*", { data: "test" });
+await redis.del("stream");
+console.log(await redis.exists("stream")); // 0 (stream doesn't exist)
+```
+
+### Performance
+
+- XDEL is O(1) for each ID to delete
+- Deleting N entries is O(N)
+- More efficient to delete multiple IDs in one call than multiple calls:
+
+```typescript
+// ✅ Better - single call
+await redis.xdel("events", [id1, id2, id3]);
+
+// ❌ Less efficient - multiple calls
+await redis.xdel("events", id1);
+await redis.xdel("events", id2);
+await redis.xdel("events", id3);
+```
+
+### Memory Reclamation
+
+Deleted entries are removed from memory, but:
+
+- The stream key itself still exists (even if empty)
+- Use `DEL` to completely remove an empty stream
+- XDEL doesn't automatically delete the stream when it becomes empty
+
+### Return Value
+
+The return value is the number of entries **actually deleted**:
+
+```typescript
+// Add 2 entries
+const id1 = await redis.xadd("stream", "*", { n: 1 });
+const id2 = await redis.xadd("stream", "*", { n: 2 });
+
+// Try to delete 3 IDs (2 exist, 1 doesn't)
+const deleted = await redis.xdel("stream", [
+  id1,
+  id2,
+  "nonexistent-id"
+]);
+
+console.log(deleted); // 2 (not 3)
+```
+
+### Use Cases
+
+- **Data cleanup**: Remove processed or expired entries
+- **Error handling**: Delete invalid entries
+- **Privacy compliance**: Remove user data on request
+- **Space management**: Delete old entries to free memory
+- **Selective retention**: Keep only relevant entries

@@ -1,0 +1,71 @@
+---
+title: SINTER
+description: Get the intersection of multiple sets
+---
+
+Returns the members of the set resulting from the intersection of all the given sets. Keys that do not exist are considered to be empty sets.
+
+## Usage
+
+```typescript
+await redis.sinter(key, ...keys);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The first set key
+</ParamField>
+
+<ParamField body="keys" type="string[]">
+  Additional set keys to intersect with
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="TData[]">
+  An array containing the members of the resulting set (intersection of all sets)
+</ResponseField>
+
+## Examples
+
+### Intersect two sets
+
+```typescript
+await redis.sadd("set1", "a", "b", "c", "d");
+await redis.sadd("set2", "c", "d", "e", "f");
+
+const result = await redis.sinter("set1", "set2");
+console.log(result); // ["c", "d"]
+```
+
+### Intersect multiple sets
+
+```typescript
+await redis.sadd("tags:post1", "javascript", "typescript", "react");
+await redis.sadd("tags:post2", "typescript", "react", "node");
+await redis.sadd("tags:post3", "react", "vue", "typescript");
+
+const commonTags = await redis.sinter("tags:post1", "tags:post2", "tags:post3");
+console.log(commonTags); // ["typescript", "react"]
+```
+
+### Find common friends
+
+```typescript
+await redis.sadd("friends:alice", "bob", "charlie", "david");
+await redis.sadd("friends:bob", "alice", "charlie", "eve");
+
+const mutualFriends = await redis.sinter("friends:alice", "friends:bob");
+console.log(mutualFriends); // ["charlie"]
+```
+
+### Empty intersection
+
+```typescript
+await redis.sadd("set1", "a", "b", "c");
+await redis.sadd("set2", "d", "e", "f");
+
+const result = await redis.sinter("set1", "set2");
+console.log(result); // []
+```

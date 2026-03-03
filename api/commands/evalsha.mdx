@@ -1,0 +1,199 @@
+---
+title: EVALSHA
+description: Execute a cached Lua script by its SHA-1 hash
+---
+
+## Usage
+
+```typescript
+await redis.evalsha(sha1, keys, args);
+```
+
+Executes a Lua script that has been previously loaded into Redis. Instead of sending the entire script, you only send the SHA-1 hash of the script, which is more efficient for frequently executed scripts.
+
+## Parameters
+
+<ParamField path="sha1" type="string" required>
+  The SHA-1 hash of the script to execute. Obtain this by using [SCRIPT LOAD](/api/commands/script-load) or by computing the SHA-1 hash of your script.
+</ParamField>
+
+<ParamField path="keys" type="string[]" required>
+  Array of key names that the script will access. These are available in the script as `KEYS[1]`, `KEYS[2]`, etc.
+</ParamField>
+
+<ParamField path="args" type="unknown[]">
+  Array of arguments to pass to the script. These are available in the script as `ARGV[1]`, `ARGV[2]`, etc.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="unknown">
+  The value returned by the Lua script. The type depends on what the script returns.
+</ResponseField>
+
+## Examples
+
+### Load and Execute a Script
+
+```typescript
+const script = `
+  local current = redis.call('GET', KEYS[1]) or 0
+  local next = current + tonumber(ARGV[1])
+  redis.call('SET', KEYS[1], next)
+  return next
+`;
+
+// First, load the script and get its SHA-1 hash
+const sha1 = await redis.scriptLoad(script);
+console.log(sha1); // e.g., "a42059b356c875f0717db19a51f6aaca9ae659ea"
+
+// Now execute it using the hash
+const result = await redis.evalsha(
+  sha1,
+  ["counter"],
+  ["5"]
+);
+console.log(result); // 5 (or current value + 5)
+
+// Subsequent calls are more efficient
+const result2 = await redis.evalsha(sha1, ["counter"], ["3"]);
+console.log(result2); // previous value + 3
+```
+
+### Handling Missing Scripts
+
+If the script isn't loaded, EVALSHA will fail with a NOSCRIPT error:
+
+```typescript
+try {
+  const result = await redis.evalsha(
+    "nonexistent_sha",
+    ["key"],
+    ["arg"]
+  );
+} catch (error) {
+  if (error.message.includes("NOSCRIPT")) {
+    // Script not loaded, use EVAL instead or load it first
+    const sha1 = await redis.scriptLoad(script);
+    const result = await redis.evalsha(sha1, ["key"], ["arg"]);
+  }
+}
+```
+
+### Conditional Operations
+
+```typescript
+const compareAndSetScript = `
+  local current = redis.call('GET', KEYS[1])
+  if current == ARGV[1] then
+    redis.call('SET', KEYS[1], ARGV[2])
+    return 1
+  else
+    return 0
+  end
+`;
+
+const sha1 = await redis.scriptLoad(compareAndSetScript);
+
+// Try to update if current value matches
+const updated = await redis.evalsha(
+  sha1,
+  ["mykey"],
+  ["expected_value", "new_value"]
+);
+
+if (updated === 1) {
+  console.log("Successfully updated");
+} else {
+  console.log("Value didn't match, not updated");
+}
+```
+
+## EVALSHA vs EVALSHA_RO
+
+### EVALSHA
+
+The `evalsha` command can execute scripts that modify data:
+
+```typescript
+const script = `
+  redis.call('SET', KEYS[1], ARGV[1])
+  return 'OK'
+`;
+
+const sha1 = await redis.scriptLoad(script);
+const result = await redis.evalsha(
+  sha1,
+  ["mykey"],
+  ["myvalue"]
+);
+```
+
+### EVALSHA_RO (Read-Only)
+
+Use `evalshaRo` for read-only scripts that don't modify data:
+
+```typescript
+const script = `
+  return redis.call('GET', KEYS[1])
+`;
+
+const sha1 = await redis.scriptLoad(script);
+const result = await redis.evalshaRo(
+  sha1,
+  ["mykey"],
+  []
+);
+```
+
+Read-only scripts:
+- Can be executed on read replicas
+- Are optimized for read-heavy workloads
+- Will error if they attempt to modify data
+
+## Using the Script Class
+
+The SDK provides a `Script` class that automatically handles SHA-1 computation and caching:
+
+```typescript
+const script = redis.createScript<number>(`
+  local current = redis.call('GET', KEYS[1]) or 0
+  local next = current + tonumber(ARGV[1])
+  redis.call('SET', KEYS[1], next)
+  return next
+`);
+
+// Use evalsha method - assumes script is loaded
+const result = await script.evalsha(["counter"], ["1"]);
+
+// Or use exec method - optimistically tries EVALSHA, falls back to EVAL
+const result2 = await script.exec(["counter"], ["1"]);
+```
+
+The `exec` method is recommended as it:
+1. First tries EVALSHA (fast, using cached script)
+2. If script not found, falls back to EVAL
+3. Subsequent calls will use EVALSHA
+
+For read-only scripts:
+
+```typescript
+const script = redis.createScript<string>(
+  "return redis.call('GET', KEYS[1])",
+  { readOnly: true }
+);
+
+// Uses EVALSHA_RO
+const result = await script.evalshaRo(["mykey"], []);
+```
+
+## Benefits of EVALSHA
+
+1. **Reduced bandwidth**: Only the SHA-1 hash is sent instead of the entire script
+2. **Better performance**: Script is pre-compiled and cached on the server
+3. **Ideal for frequently executed scripts**: Especially beneficial for scripts executed many times
+
+## See Also
+
+- [EVAL](/api/commands/eval) - Execute a Lua script
+- [SCRIPT LOAD](/api/commands/script-load) - Load a script into the server cache

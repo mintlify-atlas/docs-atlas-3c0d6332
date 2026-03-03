@@ -1,0 +1,213 @@
+---
+title: 'mget'
+description: 'Get the values of multiple keys'
+---
+
+## Description
+
+Returns the values of all specified keys. For every key that does not hold a string value or does not exist, the special value `null` is returned.
+
+## Syntax
+
+```typescript
+// Using array
+redis.mget<TData extends unknown[]>(keys: string[]): Promise<TData>
+
+// Using rest parameters
+redis.mget<TData extends unknown[]>(...keys: string[]): Promise<TData>
+```
+
+## Parameters
+
+<ParamField path="keys" type="string[] | ...string[]" required>
+  The keys to retrieve. Can be passed as an array or as individual arguments
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="TData" type="type" default="(string | null)[]">
+  An array type representing the expected types of the returned values. Each element can be a specific type or `null` if the key doesn't exist.
+</ParamField>
+
+## Returns
+
+<ResponseField name="values" type="TData">
+  An array of values at the specified keys. For keys that don't exist, `null` is returned at that position.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set multiple values
+await redis.set('key1', 'value1');
+await redis.set('key2', 'value2');
+await redis.set('key3', 'value3');
+
+// Get multiple values using array
+const values = await redis.mget(['key1', 'key2', 'key3']);
+console.log(values); // ["value1", "value2", "value3"]
+```
+
+### Using Rest Parameters
+
+```typescript
+// Get multiple values using rest parameters
+const values = await redis.mget('key1', 'key2', 'key3');
+console.log(values); // ["value1", "value2", "value3"]
+```
+
+### Handling Non-Existent Keys
+
+```typescript
+await redis.set('exists1', 'value1');
+await redis.set('exists2', 'value2');
+
+// Mix of existing and non-existent keys
+const values = await redis.mget(['exists1', 'nonexistent', 'exists2']);
+console.log(values); // ["value1", null, "value2"]
+```
+
+### Fetching User Data
+
+```typescript
+// Store user data
+await redis.set('user:1:name', 'Alice');
+await redis.set('user:1:email', 'alice@example.com');
+await redis.set('user:1:age', '30');
+
+// Fetch all user data at once
+const [name, email, age] = await redis.mget(
+  'user:1:name',
+  'user:1:email',
+  'user:1:age'
+);
+
+console.log({ name, email, age });
+// { name: "Alice", email: "alice@example.com", age: "30" }
+```
+
+### Batch Fetching with Type Safety
+
+```typescript
+interface UserData {
+  name: string;
+  email: string;
+  role: string;
+}
+
+// Store user data as JSON
+const user1 = { name: 'Alice', email: 'alice@example.com', role: 'admin' };
+const user2 = { name: 'Bob', email: 'bob@example.com', role: 'user' };
+
+await redis.set('user:1', user1);
+await redis.set('user:2', user2);
+
+// Fetch multiple users
+const users = await redis.mget<(UserData | null)[]>('user:1', 'user:2', 'user:3');
+console.log(users);
+// [
+//   { name: "Alice", email: "alice@example.com", role: "admin" },
+//   { name: "Bob", email: "bob@example.com", role: "user" },
+//   null
+// ]
+```
+
+### Configuration Settings
+
+```typescript
+// Store configuration values
+await redis.set('config:api_url', 'https://api.example.com');
+await redis.set('config:timeout', '5000');
+await redis.set('config:max_retries', '3');
+
+// Fetch all config at once
+const [apiUrl, timeout, maxRetries] = await redis.mget(
+  'config:api_url',
+  'config:timeout',
+  'config:max_retries'
+);
+
+const config = {
+  apiUrl,
+  timeout: timeout ? parseInt(timeout) : 3000,
+  maxRetries: maxRetries ? parseInt(maxRetries) : 3
+};
+
+console.log(config);
+```
+
+### Dynamic Key Fetching
+
+```typescript
+// Generate keys dynamically
+const userIds = ['123', '456', '789'];
+const keys = userIds.map(id => `user:${id}:score`);
+
+// Set some scores
+await redis.set('user:123:score', '100');
+await redis.set('user:456:score', '85');
+// user:789:score doesn't exist
+
+// Fetch all scores
+const scores = await redis.mget(keys);
+console.log(scores); // ["100", "85", null]
+
+// Filter out null values
+const validScores = scores.filter((score): score is string => score !== null);
+console.log(validScores); // ["100", "85"]
+```
+
+### Cache Warming
+
+```typescript
+// Warm up cache with multiple keys
+async function warmCache(productIds: string[]) {
+  const keys = productIds.map(id => `product:${id}`);
+  const products = await redis.mget(keys);
+  
+  // Find missing products
+  const missingIndices = products
+    .map((p, i) => p === null ? i : -1)
+    .filter(i => i !== -1);
+  
+  if (missingIndices.length > 0) {
+    console.log(`Cache miss for products: ${missingIndices.map(i => productIds[i])}`);
+    // Fetch from database and populate cache
+  }
+  
+  return products;
+}
+
+const productData = await warmCache(['p1', 'p2', 'p3']);
+```
+
+## Performance Considerations
+
+- MGET is more efficient than multiple GET commands because it reduces network round trips
+- For fetching many keys, MGET significantly reduces latency compared to sequential GET calls
+- The command has O(N) time complexity where N is the number of keys to retrieve
+
+## Notes
+
+- The order of values in the result matches the order of keys in the request
+- Non-existent keys return `null` at their respective positions
+- This is an atomic operation
+- MGET is significantly faster than multiple GET commands due to reduced network overhead
+
+## Related Commands
+
+- [get](/api/commands/get) - Get the value of a single key
+- [mset](/api/commands/mset) - Set multiple keys to multiple values
+
+## Redis Documentation
+
+For more information, see the [Redis MGET documentation](https://redis.io/commands/mget).

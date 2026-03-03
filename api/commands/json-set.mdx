@@ -1,0 +1,135 @@
+---
+title: JSON.SET
+description: Set JSON values in Redis
+---
+
+Sets the JSON value at the specified path in the key. Creates the key if it doesn't exist.
+
+## Usage
+
+```typescript
+await redis.json.set("user:123", "$", { name: "Alice", age: 30 });
+```
+
+## Arguments
+
+<ParamField path="key" type="string" required>
+  The key to store the JSON document
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  JSONPath expression specifying where to set the value in the JSON document. Use `$` to set the entire document.
+</ParamField>
+
+<ParamField path="value" type="TData" required>
+  The JSON value to set. Can be a number, string, boolean, object, or array.
+</ParamField>
+
+<ParamField path="opts" type="object">
+  Optional conditional set options
+  
+  <Expandable title="properties">
+    <ParamField path="nx" type="boolean">
+      Only set if the path does not exist. Cannot be used with `xx`.
+    </ParamField>
+    
+    <ParamField path="xx" type="boolean">
+      Only set if the path already exists. Cannot be used with `nx`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="'OK' | null">
+  Returns `"OK"` if the value was set successfully, or `null` if the condition (NX/XX) was not met.
+</ResponseField>
+
+## Examples
+
+### Set entire JSON document
+
+```typescript
+interface User {
+  name: string;
+  email: string;
+  age: number;
+  tags: string[];
+}
+
+const user: User = {
+  name: "Alice",
+  email: "alice@example.com",
+  age: 30,
+  tags: ["developer", "admin"]
+};
+
+await redis.json.set("user:123", "$", user);
+// "OK"
+```
+
+### Set specific field
+
+```typescript
+await redis.json.set("user:123", "$.age", 31);
+// "OK"
+```
+
+### Set nested value
+
+```typescript
+await redis.json.set("user:123", "$.address.city", "New York");
+```
+
+### Set array element
+
+```typescript
+await redis.json.set("user:123", "$.tags[0]", "senior-developer");
+```
+
+### Conditional set - only if path doesn't exist (NX)
+
+```typescript
+const result = await redis.json.set(
+  "user:123",
+  "$.premium",
+  true,
+  { nx: true }
+);
+
+if (result === "OK") {
+  console.log("Premium flag added");
+} else {
+  console.log("Premium flag already exists");
+}
+```
+
+### Conditional set - only if path exists (XX)
+
+```typescript
+const result = await redis.json.set(
+  "user:123",
+  "$.age",
+  32,
+  { xx: true }
+);
+
+if (result === "OK") {
+  console.log("Age updated");
+} else {
+  console.log("Age field doesn't exist");
+}
+```
+
+## JSONPath Syntax
+
+- `$` - Root element (sets entire document)
+- `$.field` - Set a specific field
+- `$.field[0]` - Set array element at index
+- `$.nested.field` - Set nested field
+
+## See Also
+
+- [JSON.GET](/api/commands/json-get) - Get JSON values
+- [JSON.DEL](/api/commands/json-del) - Delete JSON values
+- [Redis JSON.SET documentation](https://redis.io/commands/json.set)

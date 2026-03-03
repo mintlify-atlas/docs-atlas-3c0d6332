@@ -1,0 +1,157 @@
+---
+title: 'ZCARD'
+description: 'Get the number of members in a sorted set'
+---
+
+## Method Signature
+
+```typescript
+zcard(
+  key: string
+): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The cardinality (number of members) of the sorted set.
+  
+  Returns `0` if the key does not exist.
+</ResponseField>
+
+## Examples
+
+### Get the number of members
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Add members to a leaderboard
+await redis.zadd(
+  'leaderboard',
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' },
+  { score: 92, member: 'player3' }
+);
+
+// Get the total number of players
+const count = await redis.zcard('leaderboard');
+console.log(count); // 3
+```
+
+### Check if sorted set is empty
+
+```typescript
+const count = await redis.zcard('leaderboard');
+
+if (count === 0) {
+  console.log('Leaderboard is empty');
+} else {
+  console.log(`Leaderboard has ${count} players`);
+}
+```
+
+### Get count for non-existing key
+
+```typescript
+const count = await redis.zcard('nonexistent');
+console.log(count); // 0
+```
+
+### Track member count changes
+
+```typescript
+// Get initial count
+const initialCount = await redis.zcard('leaderboard');
+console.log(`Initial count: ${initialCount}`);
+
+// Add new members
+await redis.zadd(
+  'leaderboard',
+  { score: 78, member: 'player4' },
+  { score: 95, member: 'player5' }
+);
+
+// Get updated count
+const newCount = await redis.zcard('leaderboard');
+console.log(`New count: ${newCount}`);
+console.log(`Added ${newCount - initialCount} members`);
+```
+
+### Calculate percentile rank
+
+```typescript
+const totalMembers = await redis.zcard('leaderboard');
+const rank = await redis.zrank('leaderboard', 'player1');
+
+if (rank !== null && totalMembers > 0) {
+  const percentile = ((totalMembers - rank - 1) / totalMembers) * 100;
+  console.log(`player1 is in the top ${percentile.toFixed(1)}%`);
+}
+```
+
+### Validate sorted set size
+
+```typescript
+const maxMembers = 1000;
+const currentCount = await redis.zcard('leaderboard');
+
+if (currentCount >= maxMembers) {
+  console.log('Leaderboard is full');
+  // Maybe remove lowest scoring members
+  await redis.zrange('leaderboard', 0, currentCount - maxMembers);
+} else {
+  console.log(`Can add ${maxMembers - currentCount} more members`);
+}
+```
+
+### Display sorted set statistics
+
+```typescript
+const count = await redis.zcard('leaderboard');
+
+if (count > 0) {
+  // Get score range
+  const [lowest] = await redis.zrange('leaderboard', 0, 0, { withScores: true });
+  const [highest] = await redis.zrange('leaderboard', -1, -1, { withScores: true });
+  
+  console.log('Leaderboard Statistics:');
+  console.log(`  Total players: ${count}`);
+  console.log(`  Lowest score: ${lowest?.[1] ?? 'N/A'}`);
+  console.log(`  Highest score: ${highest?.[1] ?? 'N/A'}`);
+}
+```
+
+### Monitor sorted set growth
+
+```typescript
+// Useful for metrics and monitoring
+const counts = await Promise.all([
+  redis.zcard('daily_leaderboard'),
+  redis.zcard('weekly_leaderboard'),
+  redis.zcard('monthly_leaderboard'),
+]);
+
+console.log('Active players:');
+console.log(`  Today: ${counts[0]}`);
+console.log(`  This week: ${counts[1]}`);
+console.log(`  This month: ${counts[2]}`);
+```
+
+## Related Commands
+
+- [ZADD](/api/commands/zadd) - Add members to a sorted set
+- [ZREM](/api/commands/zrem) - Remove members from a sorted set
+- [ZRANGE](/api/commands/zrange) - Return a range of members
+- [ZCOUNT](/api/commands/zcount) - Count members in a score range

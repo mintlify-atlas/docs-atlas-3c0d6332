@@ -1,0 +1,437 @@
+---
+title: "Basic Usage"
+description: "Common Redis operations with the Upstash Redis SDK"
+---
+
+This guide covers the fundamental Redis operations using the Upstash Redis SDK. Learn how to work with strings, hashes, lists, sets, sorted sets, and JSON data.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install @upstash/redis
+```
+
+```bash pnpm
+pnpm add @upstash/redis
+```
+
+```bash yarn
+yarn add @upstash/redis
+```
+
+```bash bun
+bun add @upstash/redis
+```
+</CodeGroup>
+
+## Initialize the Client
+
+```typescript
+import { Redis } from "@upstash/redis"
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+})
+```
+
+Alternatively, use `fromEnv()` to automatically load credentials from environment variables:
+
+```typescript
+import { Redis } from "@upstash/redis"
+
+const redis = Redis.fromEnv()
+```
+
+## Strings
+
+Strings are the most basic Redis data type, representing a sequence of bytes.
+
+### Set and Get
+
+```typescript
+// Set a simple string value
+await redis.set('key', 'value')
+
+// Get the value
+const data = await redis.get('key')
+console.log(data) // 'value'
+```
+
+### Set with Expiration
+
+```typescript
+// Set with expiration in seconds
+await redis.set('key', 'value', { ex: 60 })
+
+// Set with expiration in milliseconds
+await redis.set('key', 'value', { px: 60000 })
+
+// Alternative: setex command
+await redis.setex('key', 60, 'value')
+```
+
+### Increment and Decrement
+
+```typescript
+// Increment a counter
+const count = await redis.incr('counter')
+console.log('Counter:', count)
+
+// Increment by a specific amount
+await redis.incrby('counter', 5)
+
+// Decrement
+await redis.decr('counter')
+await redis.decrby('counter', 3)
+```
+
+### Multiple Keys
+
+```typescript
+// Set multiple keys at once
+await redis.mset({
+  key1: 'value1',
+  key2: 'value2',
+  key3: 'value3'
+})
+
+// Get multiple keys
+const values = await redis.mget('key1', 'key2', 'key3')
+console.log(values) // ['value1', 'value2', 'value3']
+```
+
+## Hashes
+
+Hashes are maps between string fields and string values, perfect for representing objects.
+
+### Set and Get Hash Fields
+
+```typescript
+// Set hash fields
+await redis.hset('user:1000', {
+  name: 'John Doe',
+  email: 'john@example.com',
+  age: '30'
+})
+
+// Get a single field
+const name = await redis.hget('user:1000', 'name')
+console.log(name) // 'John Doe'
+
+// Get all fields and values
+const user = await redis.hgetall('user:1000')
+console.log(user) // { name: 'John Doe', email: 'john@example.com', age: '30' }
+```
+
+### Get Multiple Fields
+
+```typescript
+// Get specific fields
+const fields = await redis.hmget('user:1000', 'name', 'email')
+console.log(fields) // ['John Doe', 'john@example.com']
+```
+
+### Hash Operations
+
+```typescript
+// Increment a numeric field
+await redis.hincrby('user:1000', 'age', 1)
+
+// Get all field names
+const keys = await redis.hkeys('user:1000')
+console.log(keys) // ['name', 'email', 'age']
+
+// Get all values
+const values = await redis.hvals('user:1000')
+
+// Check if field exists
+const exists = await redis.hexists('user:1000', 'name')
+
+// Delete fields
+await redis.hdel('user:1000', 'age')
+```
+
+## Lists
+
+Lists are ordered collections of strings, sorted by insertion order.
+
+### Push and Pop
+
+```typescript
+// Push elements to the left (beginning) of the list
+await redis.lpush('mylist', 'first')
+await redis.lpush('mylist', 'second', 'third')
+
+// Push elements to the right (end) of the list
+await redis.rpush('mylist', 'last')
+
+// Pop from the left
+const first = await redis.lpop('mylist')
+
+// Pop from the right
+const last = await redis.rpop('mylist')
+```
+
+### Range Operations
+
+```typescript
+// Get elements in a range (0-based index)
+const elements = await redis.lrange('mylist', 0, -1) // Get all elements
+console.log(elements)
+
+// Get specific range
+const subset = await redis.lrange('mylist', 0, 2) // First 3 elements
+
+// Get list length
+const length = await redis.llen('mylist')
+```
+
+### Other List Operations
+
+```typescript
+// Get element at index
+const element = await redis.lindex('mylist', 0)
+
+// Set element at index
+await redis.lset('mylist', 0, 'new-value')
+
+// Trim list to specified range
+await redis.ltrim('mylist', 0, 99) // Keep first 100 elements
+```
+
+## Sets
+
+Sets are unordered collections of unique strings.
+
+### Add and Remove Members
+
+```typescript
+// Add members to a set
+await redis.sadd('tags', 'redis', 'database', 'nosql')
+
+// Check if member exists
+const isMember = await redis.sismember('tags', 'redis')
+console.log(isMember) // 1 (true)
+
+// Get all members
+const members = await redis.smembers('tags')
+console.log(members) // ['redis', 'database', 'nosql']
+
+// Remove members
+await redis.srem('tags', 'nosql')
+```
+
+### Set Operations
+
+```typescript
+// Get set size
+const size = await redis.scard('tags')
+
+// Pop random member
+const random = await redis.spop('tags')
+
+// Get random member without removing
+const randomMember = await redis.srandmember('tags')
+
+// Set operations
+await redis.sadd('set1', 'a', 'b', 'c')
+await redis.sadd('set2', 'b', 'c', 'd')
+
+// Intersection
+const intersection = await redis.sinter('set1', 'set2') // ['b', 'c']
+
+// Union
+const union = await redis.sunion('set1', 'set2') // ['a', 'b', 'c', 'd']
+
+// Difference
+const diff = await redis.sdiff('set1', 'set2') // ['a']
+```
+
+## Sorted Sets
+
+Sorted sets are similar to sets but each member has an associated score used for ordering.
+
+### Add Members with Scores
+
+```typescript
+// Add members with scores
+await redis.zadd('leaderboard', {
+  score: 100,
+  member: 'player1'
+})
+
+await redis.zadd('leaderboard', 
+  { score: 85, member: 'player2' },
+  { score: 95, member: 'player3' }
+)
+```
+
+### Query Sorted Sets
+
+```typescript
+// Get range by rank (0-based, lowest to highest score)
+const topPlayers = await redis.zrange('leaderboard', 0, 2)
+console.log(topPlayers) // ['player2', 'player3', 'player1']
+
+// Get range with scores
+const withScores = await redis.zrange('leaderboard', 0, -1, {
+  withScores: true
+})
+console.log(withScores) // ['player2', 85, 'player3', 95, 'player1', 100]
+
+// Get range in reverse order (highest to lowest)
+const reversed = await redis.zrange('leaderboard', 0, -1, {
+  rev: true
+})
+```
+
+### Sorted Set Operations
+
+```typescript
+// Get score of a member
+const score = await redis.zscore('leaderboard', 'player1')
+
+// Get rank of a member (0-based)
+const rank = await redis.zrank('leaderboard', 'player1')
+
+// Increment score
+await redis.zincrby('leaderboard', 10, 'player1')
+
+// Get count
+const count = await redis.zcard('leaderboard')
+
+// Remove members
+await redis.zrem('leaderboard', 'player2')
+
+// Remove by rank range
+await redis.zremrangebyrank('leaderboard', 0, 0) // Remove lowest ranked
+```
+
+## JSON
+
+The JSON data type allows you to store, update, and retrieve JSON values.
+
+### Set and Get JSON
+
+```typescript
+// Set a JSON value
+await redis.json.set('user:2000', '$', {
+  name: 'Jane Smith',
+  email: 'jane@example.com',
+  preferences: {
+    theme: 'dark',
+    notifications: true
+  },
+  tags: ['premium', 'verified']
+})
+
+// Get the entire JSON value
+const user = await redis.json.get('user:2000', '$')
+console.log(user) // [{ name: 'Jane Smith', ... }]
+```
+
+### Update JSON Fields
+
+```typescript
+// Update a specific field
+await redis.json.set('user:2000', '$.preferences.theme', 'light')
+
+// Update nested fields
+await redis.json.set('user:2000', '$.email', 'jane.smith@example.com')
+
+// Get specific fields
+const theme = await redis.json.get('user:2000', '$.preferences.theme')
+console.log(theme) // ['light']
+```
+
+### Array Operations
+
+```typescript
+// Append to array
+await redis.json.arrappend('user:2000', '$.tags', 'early-adopter')
+
+// Get array length
+const length = await redis.json.arrlen('user:2000', '$.tags')
+
+// Get array element by index
+const tags = await redis.json.get('user:2000', '$.tags')
+```
+
+### Numeric Operations
+
+```typescript
+// Store a JSON document with numbers
+await redis.json.set('stats', '$', {
+  views: 100,
+  likes: 50
+})
+
+// Increment a number
+await redis.json.numincrby('stats', '$.views', 1)
+await redis.json.numincrby('stats', '$.likes', 5)
+
+// Get the updated values
+const stats = await redis.json.get('stats', '$')
+console.log(stats) // [{ views: 101, likes: 55 }]
+```
+
+## Key Management
+
+### Check Existence and Delete
+
+```typescript
+// Check if key exists
+const exists = await redis.exists('mykey')
+console.log(exists) // 1 if exists, 0 if not
+
+// Delete keys
+await redis.del('key1', 'key2', 'key3')
+```
+
+### Set Expiration
+
+```typescript
+// Set expiration in seconds
+await redis.expire('mykey', 60)
+
+// Set expiration in milliseconds
+await redis.pexpire('mykey', 60000)
+
+// Set expiration at specific timestamp
+const timestamp = Math.floor(Date.now() / 1000) + 3600
+await redis.expireat('mykey', timestamp)
+
+// Get TTL (time to live)
+const ttl = await redis.ttl('mykey')
+console.log(ttl) // seconds until expiration
+```
+
+### Get Key Information
+
+```typescript
+// Get key type
+const type = await redis.type('mykey')
+console.log(type) // 'string', 'list', 'set', 'zset', 'hash', or 'ReJSON-RL'
+
+// Pattern matching
+const keys = await redis.keys('user:*') // Get all keys matching pattern
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AWS Lambda" icon="aws" href="/examples/aws-lambda">
+    Deploy Redis with AWS Lambda functions
+  </Card>
+  <Card title="Cloudflare Workers" icon="cloudflare" href="/examples/cloudflare-workers">
+    Use Redis in Cloudflare Workers
+  </Card>
+  <Card title="Next.js" icon="react" href="/examples/next-js">
+    Integrate Redis with Next.js applications
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/redis">
+    Explore all available Redis commands
+  </Card>
+</CardGroup>

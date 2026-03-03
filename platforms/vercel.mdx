@@ -1,0 +1,350 @@
+---
+title: Vercel
+description: Use Upstash Redis SDK with Vercel Functions and Edge Functions
+---
+
+The Upstash Redis SDK works seamlessly with Vercel, supporting both Vercel Functions (Node.js runtime) and Vercel Edge Functions.
+
+## Installation
+
+```bash
+npm install @upstash/redis
+```
+
+## Quick Start
+
+<Tabs>
+  <Tab title="App Router">
+    ### API Route (Edge Runtime)
+
+    ```typescript
+    // app/api/hello/route.ts
+    import { Redis } from "@upstash/redis";
+    import { NextResponse } from "next/server";
+
+    const redis = Redis.fromEnv();
+
+    export async function GET() {
+      const count = await redis.incr("counter");
+      return NextResponse.json({ count });
+    }
+
+    export const runtime = "edge";
+    ```
+
+    ### API Route (Node.js Runtime)
+
+    ```typescript
+    // app/api/hello/route.ts
+    import { Redis } from "@upstash/redis";
+    import { NextResponse } from "next/server";
+
+    const redis = Redis.fromEnv();
+
+    export async function GET() {
+      const count = await redis.incr("counter");
+      return NextResponse.json({ count });
+    }
+
+    // Node.js runtime (default)
+    ```
+  </Tab>
+
+  <Tab title="Pages Router">
+    ### API Route
+
+    ```typescript
+    // pages/api/hello.ts
+    import { Redis } from "@upstash/redis";
+import type { NextApiRequest, NextApiResponse } from "next";
+
+    const redis = Redis.fromEnv();
+
+    export default async function handler(
+      req: NextApiRequest,
+      res: NextApiResponse
+    ) {
+      const count = await redis.incr("counter");
+      res.status(200).json({ count });
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Choosing the Right Import
+
+The Upstash Redis SDK automatically works with both Node.js and Edge runtimes:
+
+```typescript
+import { Redis } from "@upstash/redis";
+```
+
+This single import works for:
+- **Vercel Functions** (Node.js runtime)
+- **Vercel Edge Functions** (Edge runtime)
+- The SDK automatically detects the runtime and adjusts accordingly
+
+<Note>
+  You don't need different imports for different runtimes when using Vercel. The default import handles both!
+</Note>
+
+## Configuration
+
+### Using fromEnv() (Recommended)
+
+The easiest way to configure Redis is using `fromEnv()`, which automatically reads from environment variables:
+
+```typescript
+const redis = Redis.fromEnv();
+```
+
+This reads from:
+- `UPSTASH_REDIS_REST_URL` or `KV_REST_API_URL`
+- `UPSTASH_REDIS_REST_TOKEN` or `KV_REST_API_TOKEN`
+
+### Using Vercel KV Integration
+
+If you're using the [Vercel KV integration](https://vercel.com/docs/storage/vercel-kv), the environment variables are automatically set as:
+- `KV_REST_API_URL`
+- `KV_REST_API_TOKEN`
+
+The SDK automatically falls back to these, so `Redis.fromEnv()` works out of the box!
+
+### Manual Configuration
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+```
+
+### With Options
+
+```typescript
+const redis = Redis.fromEnv({
+  automaticDeserialization: true,
+  latencyLogging: true,
+});
+```
+
+## Environment Variables
+
+<Steps>
+  <Step title="Add environment variables to your Vercel project">
+    1. Go to your project settings in Vercel
+    2. Navigate to **Environment Variables**
+    3. Add:
+       - `UPSTASH_REDIS_REST_URL`: Your Redis REST URL
+       - `UPSTASH_REDIS_REST_TOKEN`: Your Redis REST token
+  </Step>
+
+  <Step title="Or use .env.local for local development">
+    ```bash
+    # .env.local
+    UPSTASH_REDIS_REST_URL=https://your-redis-url.upstash.io
+    UPSTASH_REDIS_REST_TOKEN=your-token-here
+    ```
+
+    <Warning>
+      Never commit `.env.local` to version control. Add it to `.gitignore`.
+    </Warning>
+  </Step>
+
+  <Step title="Or use the Vercel KV Integration">
+    The [Vercel KV integration](https://vercel.com/integrations/upstash) automatically sets up the required environment variables.
+  </Step>
+</Steps>
+
+## Configuration Options
+
+### Node.js Runtime (Vercel Functions)
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  
+  // Connection pooling (Node.js only)
+  keepAlive: true,
+  
+  // Latency logging
+  latencyLogging: true,
+  
+  // Automatic deserialization
+  automaticDeserialization: true,
+  
+  // Read-your-writes consistency
+  readYourWrites: true,
+  
+  // Cache control
+  cache: "no-store",
+  
+  // Retry configuration
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 50,
+  },
+});
+```
+
+### Edge Runtime (Vercel Edge Functions)
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  
+  // Keep-alive (Edge compatible)
+  keepAlive: true,
+  
+  // Automatic deserialization
+  automaticDeserialization: true,
+  
+  // Read-your-writes consistency
+  readYourWrites: true,
+  
+  // Retry configuration
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 50,
+  },
+});
+```
+
+<Warning>
+  The `agent` option is **not supported** in Edge Runtime. Use `keepAlive: true` instead.
+</Warning>
+
+## Complete Examples
+
+### Next.js App Router with Edge Runtime
+
+```typescript
+// app/api/counter/route.ts
+import { Redis } from "@upstash/redis";
+import { NextResponse } from "next/server";
+
+const redis = Redis.fromEnv();
+
+export async function GET() {
+  const count = await redis.incr("page-views");
+  return NextResponse.json({ count });
+}
+
+export async function POST(request: Request) {
+  const { key, value } = await request.json();
+  await redis.set(key, value);
+  return NextResponse.json({ success: true });
+}
+
+export const runtime = "edge";
+```
+
+### Next.js App Router with Node.js Runtime
+
+```typescript
+// app/api/data/route.ts
+import { Redis } from "@upstash/redis";
+import { NextResponse } from "next/server";
+
+const redis = Redis.fromEnv({
+  keepAlive: true,
+});
+
+export async function GET() {
+  const count = await redis.incr("counter");
+  const data = await redis.get("mydata");
+  
+  return NextResponse.json({ count, data });
+}
+```
+
+### Next.js Pages Router
+
+```typescript
+// pages/api/hello.ts
+import { Redis } from "@upstash/redis";
+import type { NextApiRequest, NextApiResponse } from "next";
+
+const redis = Redis.fromEnv();
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method === "GET") {
+    const count = await redis.incr("counter");
+    res.status(200).json({ count });
+  } else if (req.method === "POST") {
+    const { key, value } = req.body;
+    await redis.set(key, value);
+    res.status(200).json({ success: true });
+  } else {
+    res.status(405).json({ error: "Method not allowed" });
+  }
+}
+```
+
+## Runtime Detection
+
+The SDK automatically detects the Vercel runtime:
+
+- **Edge Runtime**: Reports as `edge-light` in telemetry
+- **Node.js Runtime**: Reports as `node@<version>` in telemetry
+- **Platform**: Automatically detected as `vercel`
+
+## Performance Tips
+
+### 1. Enable Keep-Alive
+
+```typescript
+const redis = Redis.fromEnv({ keepAlive: true });
+```
+
+### 2. Use Edge Runtime for Global Performance
+
+Edge Functions run closer to your users:
+
+```typescript
+export const runtime = "edge";
+```
+
+### 3. Enable Auto-Pipelining
+
+```typescript
+const redis = Redis.fromEnv({ enableAutoPipelining: true });
+```
+
+## Troubleshooting
+
+### "Unable to find environment variable"
+
+Make sure environment variables are set in your Vercel project settings or `.env.local` file.
+
+### Edge Runtime Errors
+
+If using the `agent` option, remove it for Edge Runtime:
+
+```typescript
+// ❌ Don't use in Edge Runtime
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  agent: new https.Agent({ keepAlive: true }), // Not supported in Edge
+});
+
+// ✅ Use this instead
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  keepAlive: true,
+});
+```
+
+## Related
+
+- [Vercel App Router Example](https://github.com/upstash/redis-js/tree/main/examples/vercel-functions-app-router) - Complete example
+- [Vercel Pages Router Example](https://github.com/upstash/redis-js/tree/main/examples/vercel-functions-pages-router) - Complete example
+- [Vercel KV Documentation](https://vercel.com/docs/storage/vercel-kv) - Official Vercel KV docs
+- [Configuration](/concepts/client-configuration) - Complete configuration reference

@@ -1,0 +1,268 @@
+---
+title: Fastly Compute@Edge
+description: Use Upstash Redis SDK with Fastly Compute@Edge
+---
+
+The Upstash Redis SDK works seamlessly with Fastly Compute@Edge, allowing you to use Redis at the edge.
+
+## Installation
+
+```bash
+npm install @upstash/redis
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Import from the Fastly-specific path">
+    ```javascript
+    import { Redis } from "@upstash/redis/fastly";
+    ```
+
+    <Note>
+      Always use `@upstash/redis/fastly` when deploying to Fastly Compute@Edge.
+    </Note>
+  </Step>
+
+  <Step title="Configure a backend in fastly.toml">
+    Create or update your `fastly.toml` file to define your Upstash Redis backend:
+
+    ```toml
+    # fastly.toml
+    manifest_version = 2
+    name = "your-app-name"
+    description = "Your Fastly Compute@Edge app"
+    authors = ["you@example.com"]
+    language = "javascript"
+
+    [local_server.backends.upstash-db]
+      url = "<UPSTASH_REDIS_REST_URL>"
+    ```
+
+    <Info>
+      The backend name (e.g., `upstash-db`) must match the `backend` parameter in your Redis configuration.
+    </Info>
+  </Step>
+
+  <Step title="Create a Redis instance">
+    ```javascript
+    const redis = new Redis({
+      url: "<UPSTASH_REDIS_REST_URL>",
+      token: "<UPSTASH_REDIS_REST_TOKEN>",
+      backend: "upstash-db", // Must match the backend name in fastly.toml
+    });
+    ```
+  </Step>
+
+  <Step title="Use Redis in your handler">
+    ```javascript
+    addEventListener("fetch", (event) => event.respondWith(handleRequest(event)));
+
+    async function handleRequest(_event) {
+      try {
+        const count = await redis.incr("fastly-counter");
+        
+        return new Response(JSON.stringify({ count }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(err.message, { status: 500 });
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Configuration Options
+
+<Warning>
+  The `backend` parameter is **required** for Fastly Compute@Edge and must match a backend defined in your `fastly.toml` file.
+</Warning>
+
+```javascript
+const redis = new Redis({
+  // Required: Your Upstash Redis REST URL
+  url: "<UPSTASH_REDIS_REST_URL>",
+  
+  // Required: Your Upstash Redis REST token
+  token: "<UPSTASH_REDIS_REST_TOKEN>",
+  
+  // Required: Backend name from fastly.toml
+  backend: "upstash-db",
+  
+  // Optional: Enable keep-alive connections
+  keepAlive: true,
+  
+  // Optional: Read-your-writes consistency
+  readYourWrites: true,
+  
+  // Optional: Automatic deserialization of JSON values
+  automaticDeserialization: true,
+  
+  // Optional: Configure retry behavior
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 50,
+  },
+  
+  // Optional: Response encoding
+  responseEncoding: "base64",
+});
+```
+
+## Complete Example
+
+### Project Structure
+
+```
+my-fastly-app/
+├── src/
+│   └── index.js
+├── fastly.toml
+├── package.json
+└── webpack.config.js
+```
+
+### fastly.toml
+
+```toml
+manifest_version = 2
+name = "upstash-redis-fastly"
+description = "Example of using Upstash with Fastly Compute@Edge"
+authors = ["you@example.com"]
+language = "javascript"
+service_id = "<SERVICE_ID>"
+
+[local_server.backends.upstash-db]
+  url = "<UPSTASH_REDIS_REST_URL>"
+```
+
+### src/index.js
+
+```javascript
+import { Redis } from "@upstash/redis/fastly";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_REST_URL>",
+  token: "<UPSTASH_REDIS_REST_TOKEN>",
+  backend: "upstash-db",
+});
+
+addEventListener("fetch", (event) => event.respondWith(handleRequest(event)));
+
+async function handleRequest(event) {
+  try {
+    const url = new URL(event.request.url);
+
+    // Increment page view counter
+    const views = await redis.incr(`views:${url.pathname}`);
+
+    // Store visitor data
+    await redis.lpush("recent-visits", {
+      path: url.pathname,
+      timestamp: Date.now(),
+    });
+
+    // Get recent visits
+    const recentVisits = await redis.lrange("recent-visits", 0, 9);
+
+    return new Response(
+      JSON.stringify({
+        path: url.pathname,
+        views,
+        recentVisits,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  } catch (err) {
+    return new Response(err.message, { status: 500 });
+  }
+}
+```
+
+## Backend Configuration
+
+Fastly requires you to define backends for external services. Backends can be configured:
+
+### 1. In fastly.toml (Local Development)
+
+```toml
+[local_server.backends.upstash-db]
+  url = "<UPSTASH_REDIS_REST_URL>"
+```
+
+### 2. Via Fastly CLI
+
+```bash
+fastly backend create --name upstash-db --address your-redis-url.upstash.io
+```
+
+### 3. Via Fastly Web Interface
+
+1. Go to your service in the Fastly web interface
+2. Navigate to **Origins** > **Hosts**
+3. Click **Create a host**
+4. Set the name to match your `backend` parameter (e.g., `upstash-db`)
+5. Set the address to your Upstash Redis URL
+
+## Environment Variables
+
+Fastly Compute@Edge doesn't have built-in environment variable support like other platforms. You have several options:
+
+### 1. Use Fastly Config Stores (Recommended)
+
+Config stores allow you to manage configuration separately from your code.
+
+### 2. Use Fastly Edge Dictionaries
+
+Edge dictionaries provide key-value storage for configuration.
+
+### 3. Build-time Environment Variables
+
+Use webpack or your bundler to inject values at build time:
+
+```javascript
+// webpack.config.js
+const webpack = require('webpack');
+
+module.exports = {
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env.UPSTASH_REDIS_REST_URL': JSON.stringify(process.env.UPSTASH_REDIS_REST_URL),
+      'process.env.UPSTASH_REDIS_REST_TOKEN': JSON.stringify(process.env.UPSTASH_REDIS_REST_TOKEN),
+    }),
+  ],
+};
+```
+
+## Deployment
+
+<Steps>
+  <Step title="Build your application">
+    ```bash
+    npm run build
+    ```
+  </Step>
+
+  <Step title="Deploy to Fastly">
+    ```bash
+    fastly compute publish
+    ```
+  </Step>
+</Steps>
+
+## Telemetry
+
+The SDK automatically reports `"fastly"` as the platform in telemetry data.
+
+<Note>
+  Telemetry cannot be disabled via environment variables in Fastly. Set `enableAutoPipelining: false` in the Redis constructor if needed.
+</Note>
+
+## Related
+
+- [Fastly Example](https://github.com/upstash/redis-js/tree/main/examples/fastly) - Complete example on GitHub
+- [Fastly Guide](https://blog.upstash.com/fastly-compute-edge-with-redis) - Step-by-step tutorial
+- [Configuration](/concepts/client-configuration) - Complete configuration reference

@@ -1,0 +1,122 @@
+---
+title: 'HGETALL'
+description: 'Get all fields and values in a hash'
+---
+
+## Usage
+
+Returns all fields and values of the hash stored at `key`.
+
+```typescript
+await redis.hgetall(key);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+## Response
+
+<ResponseField name="object" type="TData | null">
+  An object containing all field-value pairs in the hash, or `null` if the hash does not exist or is empty.
+  
+  The return type is a record where keys are field names and values are the stored values. Values are automatically parsed from JSON when possible.
+</ResponseField>
+
+## Examples
+
+### Get all hash fields
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set hash fields
+await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  age: 30,
+  city: 'New York'
+});
+
+// Get all fields and values
+const user = await redis.hgetall('user:1000');
+console.log(user);
+// {
+//   name: 'Alice',
+//   email: 'alice@example.com',
+//   age: 30,
+//   city: 'New York'
+// }
+```
+
+### Handle non-existent keys
+
+```typescript
+const result = await redis.hgetall('user:9999');
+console.log(result); // null
+```
+
+### Working with typed data
+
+```typescript
+interface User {
+  name: string;
+  email: string;
+  age: number;
+  city: string;
+}
+
+const user = await redis.hgetall<User>('user:1000');
+
+if (user) {
+  console.log(`${user.name} is ${user.age} years old`);
+}
+```
+
+### Iterate over hash fields
+
+```typescript
+const user = await redis.hgetall('user:1000');
+
+if (user) {
+  for (const [field, value] of Object.entries(user)) {
+    console.log(`${field}: ${value}`);
+  }
+}
+```
+
+### Store and retrieve complex data
+
+```typescript
+// Store session data
+await redis.hset('session:abc123', {
+  userId: '1000',
+  createdAt: Date.now().toString(),
+  ipAddress: '192.168.1.1',
+  userAgent: 'Mozilla/5.0...'
+});
+
+// Retrieve all session data
+const session = await redis.hgetall('session:abc123');
+console.log(session);
+```
+
+## Notes
+
+- The command automatically parses numeric values that are safe integers
+- JSON values are parsed when possible
+- For very large hashes, consider using `HSCAN` to iterate incrementally
+
+## See Also
+
+- [HGET](/api/commands/hget) - Get a single hash field value
+- [HKEYS](/api/commands/hkeys) - Get all field names in a hash
+- [HVALS](/api/commands/hvals) - Get all values in a hash
+- [HMGET](/api/commands/hmget) - Get multiple hash field values

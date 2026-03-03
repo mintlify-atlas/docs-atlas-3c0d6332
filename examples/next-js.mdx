@@ -1,0 +1,669 @@
+---
+title: "Next.js"
+description: "Integrate Upstash Redis with Next.js applications"
+---
+
+This guide demonstrates how to use Upstash Redis in Next.js applications, covering both App Router and Pages Router patterns, Server Components, API Routes, and Server Actions.
+
+## Why Upstash Redis for Next.js?
+
+- **Edge-ready**: Works in Edge Runtime and Serverless Functions
+- **Server Components**: Native support for React Server Components
+- **Fast**: HTTP-based for quick cold starts on Vercel
+- **Simple**: No connection pooling required
+- **Flexible**: Use in API routes, Server Actions, or Server Components
+
+## Prerequisites
+
+<Steps>
+  <Step title="Create Next.js App">
+    ```bash
+    npx create-next-app@latest my-app
+    cd my-app
+    ```
+  </Step>
+  
+  <Step title="Install Upstash Redis">
+    ```bash
+    npm install @upstash/redis
+    ```
+  </Step>
+  
+  <Step title="Create Upstash Redis Database">
+    Create a database on [Upstash Console](https://console.upstash.com)
+  </Step>
+  
+  <Step title="Add Environment Variables">
+    Create `.env.local` file:
+    ```bash
+    UPSTASH_REDIS_REST_URL=your_url_here
+    UPSTASH_REDIS_REST_TOKEN=your_token_here
+    ```
+  </Step>
+</Steps>
+
+## App Router (Next.js 13+)
+
+### Server Component Example
+
+Server Components can directly access Redis without API routes.
+
+<CodeGroup>
+```tsx app/page.tsx
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
+
+export default async function Home() {
+  const count = await redis.incr("counter");
+  
+  return (
+    <div className="flex h-screen w-screen items-center justify-center">
+      <h1 className="text-4xl font-bold">Counter: {count}</h1>
+    </div>
+  )
+}
+```
+
+```tsx app/layout.tsx
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  )
+}
+```
+
+```bash .env.local
+UPSTASH_REDIS_REST_URL=https://your-endpoint.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-token
+```
+</CodeGroup>
+
+### API Route Example
+
+<CodeGroup>
+```typescript app/api/hello/route.ts
+import { Redis } from "@upstash/redis";
+import { NextResponse } from "next/server";
+
+const redis = Redis.fromEnv();
+
+export async function GET() {
+  const count = await redis.incr("counter");
+  return NextResponse.json({ count });
+}
+
+export const dynamic = 'force-dynamic'
+```
+
+```typescript app/api/user/[id]/route.ts
+import { Redis } from "@upstash/redis";
+import { NextResponse } from "next/server";
+
+const redis = Redis.fromEnv();
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  const user = await redis.get<User>(`user:${params.id}`);
+  
+  if (!user) {
+    return NextResponse.json(
+      { error: "User not found" },
+      { status: 404 }
+    );
+  }
+  
+  return NextResponse.json(user);
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  const body = await request.json();
+  
+  await redis.set(`user:${params.id}`, body, { ex: 3600 });
+  
+  return NextResponse.json({ success: true });
+}
+```
+</CodeGroup>
+
+### Server Actions
+
+Server Actions provide a simple way to mutate data from Client Components.
+
+<CodeGroup>
+```tsx app/actions.ts
+"use server"
+
+import { Redis } from "@upstash/redis";
+import { revalidatePath } from "next/cache";
+
+const redis = Redis.fromEnv();
+
+export async function incrementCounter() {
+  const count = await redis.incr("counter");
+  revalidatePath("/");
+  return count;
+}
+
+export async function resetCounter() {
+  await redis.set("counter", 0);
+  revalidatePath("/");
+  return 0;
+}
+
+export async function addTodo(text: string) {
+  const id = Date.now().toString();
+  await redis.hset(`todo:${id}`, {
+    id,
+    text,
+    completed: false,
+    createdAt: new Date().toISOString(),
+  });
+  revalidatePath("/todos");
+  return id;
+}
+```
+
+```tsx app/page.tsx
+"use client"
+
+import { incrementCounter, resetCounter } from "./actions";
+import { useState } from "react";
+
+export default function Home() {
+  const [count, setCount] = useState(0);
+
+  async function handleIncrement() {
+    const newCount = await incrementCounter();
+    setCount(newCount);
+  }
+
+  async function handleReset() {
+    const newCount = await resetCounter();
+    setCount(newCount);
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-screen gap-4">
+      <h1 className="text-4xl font-bold">Counter: {count}</h1>
+      <div className="flex gap-2">
+        <button
+          onClick={handleIncrement}
+          className="px-4 py-2 bg-blue-500 text-white rounded"
+        >
+          Increment
+        </button>
+        <button
+          onClick={handleReset}
+          className="px-4 py-2 bg-red-500 text-white rounded"
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+</CodeGroup>
+
+## Pages Router
+
+### API Routes
+
+<CodeGroup>
+```typescript pages/api/hello.ts
+import type { NextApiRequest, NextApiResponse } from "next";
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
+
+type Data = {
+  count: number;
+};
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<Data>
+) {
+  const count = await redis.incr("counter");
+  res.status(200).json({ count });
+}
+```
+
+```typescript pages/api/cache/[key].ts
+import type { NextApiRequest, NextApiResponse } from "next";
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  const { key } = req.query;
+
+  if (typeof key !== "string") {
+    return res.status(400).json({ error: "Invalid key" });
+  }
+
+  if (req.method === "GET") {
+    const value = await redis.get(key);
+    return res.status(200).json({ value });
+  }
+
+  if (req.method === "POST") {
+    const { value, ttl } = req.body;
+    await redis.set(key, value, ttl ? { ex: ttl } : {});
+    return res.status(200).json({ success: true });
+  }
+
+  if (req.method === "DELETE") {
+    await redis.del(key);
+    return res.status(200).json({ success: true });
+  }
+
+  res.status(405).json({ error: "Method not allowed" });
+}
+```
+</CodeGroup>
+
+### Server-Side Rendering (SSR)
+
+```typescript pages/index.tsx
+import { Redis } from "@upstash/redis";
+import type { GetServerSideProps } from "next";
+
+const redis = Redis.fromEnv();
+
+interface Props {
+  count: number;
+}
+
+export default function Home({ count }: Props) {
+  return (
+    <div className="flex h-screen items-center justify-center">
+      <h1 className="text-4xl font-bold">Counter: {count}</h1>
+    </div>
+  );
+}
+
+export const getServerSideProps: GetServerSideProps<Props> = async () => {
+  const count = await redis.get<number>("counter") || 0;
+  
+  return {
+    props: {
+      count,
+    },
+  };
+};
+```
+
+## Advanced Examples
+
+### Caching with Revalidation
+
+```typescript app/posts/[id]/page.tsx
+import { Redis } from "@upstash/redis";
+import { notFound } from "next/navigation";
+
+const redis = Redis.fromEnv();
+
+interface Post {
+  id: string;
+  title: string;
+  content: string;
+  author: string;
+}
+
+async function getPost(id: string): Promise<Post | null> {
+  const cacheKey = `post:${id}`;
+  
+  // Try cache first
+  const cached = await redis.get<Post>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  
+  // Fetch from database (simulated)
+  const post: Post = {
+    id,
+    title: "Example Post",
+    content: "This is an example post",
+    author: "John Doe",
+  };
+  
+  // Cache for 5 minutes
+  await redis.set(cacheKey, post, { ex: 300 });
+  
+  return post;
+}
+
+export default async function PostPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const post = await getPost(params.id);
+  
+  if (!post) {
+    notFound();
+  }
+  
+  return (
+    <article className="max-w-2xl mx-auto p-8">
+      <h1 className="text-3xl font-bold mb-4">{post.title}</h1>
+      <p className="text-gray-600 mb-8">By {post.author}</p>
+      <div className="prose">{post.content}</div>
+    </article>
+  );
+}
+
+// Revalidate every 60 seconds
+export const revalidate = 60;
+```
+
+### Rate Limiting Middleware
+
+```typescript middleware.ts
+import { Redis } from "@upstash/redis";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+const RATE_LIMIT = 10; // requests per minute
+const WINDOW = 60; // seconds
+
+export async function middleware(request: NextRequest) {
+  // Get client IP
+  const ip = request.ip || "unknown";
+  const key = `rate_limit:${ip}`;
+
+  // Increment counter
+  const requests = await redis.incr(key);
+
+  // Set expiration on first request
+  if (requests === 1) {
+    await redis.expire(key, WINDOW);
+  }
+
+  // Check if limit exceeded
+  if (requests > RATE_LIMIT) {
+    return new NextResponse(
+      JSON.stringify({ error: "Rate limit exceeded" }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": WINDOW.toString(),
+        },
+      }
+    );
+  }
+
+  // Add rate limit headers
+  const response = NextResponse.next();
+  response.headers.set("X-RateLimit-Limit", RATE_LIMIT.toString());
+  response.headers.set("X-RateLimit-Remaining", (RATE_LIMIT - requests).toString());
+
+  return response;
+}
+
+export const config = {
+  matcher: "/api/:path*",
+};
+```
+
+### Session Management
+
+```typescript lib/session.ts
+import { Redis } from "@upstash/redis";
+import { cookies } from "next/headers";
+
+const redis = Redis.fromEnv();
+
+interface Session {
+  userId: string;
+  email: string;
+  createdAt: number;
+}
+
+export async function getSession(): Promise<Session | null> {
+  const sessionId = cookies().get("sessionId")?.value;
+  
+  if (!sessionId) {
+    return null;
+  }
+  
+  const session = await redis.get<Session>(`session:${sessionId}`);
+  return session;
+}
+
+export async function createSession(userId: string, email: string): Promise<string> {
+  const sessionId = crypto.randomUUID();
+  const session: Session = {
+    userId,
+    email,
+    createdAt: Date.now(),
+  };
+  
+  // Store session for 7 days
+  await redis.set(`session:${sessionId}`, session, { ex: 60 * 60 * 24 * 7 });
+  
+  cookies().set("sessionId", sessionId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  });
+  
+  return sessionId;
+}
+
+export async function deleteSession(): Promise<void> {
+  const sessionId = cookies().get("sessionId")?.value;
+  
+  if (sessionId) {
+    await redis.del(`session:${sessionId}`);
+    cookies().delete("sessionId");
+  }
+}
+```
+
+```typescript app/api/auth/login/route.ts
+import { createSession } from "@/lib/session";
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  const { email, password } = await request.json();
+  
+  // Validate credentials (implement your own logic)
+  const userId = "user123"; // Retrieved from your auth system
+  
+  await createSession(userId, email);
+  
+  return NextResponse.json({ success: true });
+}
+```
+
+### Real-time View Counter
+
+```typescript app/blog/[slug]/page.tsx
+import { Redis } from "@upstash/redis";
+import ViewCounter from "./ViewCounter";
+
+const redis = Redis.fromEnv();
+
+interface Props {
+  params: { slug: string };
+}
+
+export default async function BlogPost({ params }: Props) {
+  const viewKey = `views:${params.slug}`;
+  
+  // Increment view count
+  const views = await redis.incr(viewKey);
+  
+  return (
+    <article>
+      <h1>Blog Post</h1>
+      <ViewCounter views={views} />
+      {/* Post content */}
+    </article>
+  );
+}
+```
+
+```typescript app/blog/[slug]/ViewCounter.tsx
+"use client"
+
+export default function ViewCounter({ views }: { views: number }) {
+  return (
+    <div className="text-sm text-gray-600">
+      {views.toLocaleString()} views
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+### 1. Initialize Client Once
+
+Create a shared Redis instance:
+
+```typescript lib/redis.ts
+import { Redis } from "@upstash/redis";
+
+export const redis = Redis.fromEnv();
+```
+
+Use it throughout your app:
+
+```typescript
+import { redis } from "@/lib/redis";
+
+const data = await redis.get("key");
+```
+
+### 2. Type Safety
+
+Use TypeScript generics for type-safe operations:
+
+```typescript
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+const user = await redis.get<User>("user:123");
+// user is typed as User | null
+```
+
+### 3. Error Handling
+
+```typescript
+import { redis } from "@/lib/redis";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  try {
+    const data = await redis.get("key");
+    return NextResponse.json({ data });
+  } catch (error) {
+    console.error("Redis error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch data" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### 4. Caching Strategy
+
+Implement cache-aside pattern:
+
+```typescript
+async function getData(id: string) {
+  const cacheKey = `data:${id}`;
+  
+  // Try cache
+  const cached = await redis.get(cacheKey);
+  if (cached) return cached;
+  
+  // Fetch from source
+  const data = await fetchFromDatabase(id);
+  
+  // Store in cache
+  await redis.set(cacheKey, data, { ex: 300 });
+  
+  return data;
+}
+```
+
+## Deployment
+
+### Vercel
+
+<Steps>
+  <Step title="Add Environment Variables">
+    In your Vercel project settings, add:
+    - `UPSTASH_REDIS_REST_URL`
+    - `UPSTASH_REDIS_REST_TOKEN`
+  </Step>
+  
+  <Step title="Deploy">
+    ```bash
+    vercel deploy
+    ```
+  </Step>
+</Steps>
+
+### Other Platforms
+
+Upstash Redis works on any platform that supports Next.js:
+- Netlify
+- AWS Amplify
+- Railway
+- Render
+
+Just add the environment variables to your platform's settings.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AWS Lambda" icon="aws" href="/examples/aws-lambda">
+    Deploy with AWS Lambda
+  </Card>
+  <Card title="Cloudflare Workers" icon="cloudflare" href="/examples/cloudflare-workers">
+    Use Redis at the edge
+  </Card>
+  <Card title="Basic Usage" icon="book" href="/examples/basic-usage">
+    Learn more Redis operations
+  </Card>
+  <Card title="GitHub Examples" icon="github" href="https://github.com/upstash/upstash-redis/tree/main/examples">
+    More Next.js examples
+  </Card>
+</CardGroup>

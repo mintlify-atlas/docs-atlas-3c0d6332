@@ -1,0 +1,470 @@
+---
+title: Installation
+description: Install Upstash Redis SDK for your platform and package manager
+---
+
+Install the Upstash Redis SDK for your platform using your preferred package manager.
+
+## Package managers
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @upstash/redis
+    ```
+  </Tab>
+
+  <Tab title="yarn">
+    ```bash
+    yarn add @upstash/redis
+    ```
+  </Tab>
+
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @upstash/redis
+    ```
+  </Tab>
+
+  <Tab title="bun">
+    ```bash
+    bun add @upstash/redis
+    ```
+  </Tab>
+</Tabs>
+
+## Platform-specific imports
+
+The SDK provides optimized entry points for different platforms. Choose the right import for your environment.
+
+### Node.js
+
+The default export is optimized for Node.js:
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+```
+
+<Info>
+Supports Node.js 14 and above. The SDK automatically detects your Node.js version and adjusts accordingly.
+</Info>
+
+### Cloudflare Workers
+
+Use the Cloudflare-specific import for Workers:
+
+```typescript
+import { Redis } from '@upstash/redis/cloudflare';
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+    
+    const count = await redis.incr('counter');
+    return new Response(JSON.stringify({ count }));
+  },
+};
+```
+
+<Note>
+The Cloudflare import is optimized for Workers and removes Node.js-specific code for smaller bundle sizes.
+</Note>
+
+### Fastly Compute@Edge
+
+Use the Fastly-specific import:
+
+```javascript
+import { Redis } from '@upstash/redis/fastly';
+
+const redis = new Redis({
+  url: 'your_upstash_redis_rest_url',
+  token: 'your_upstash_redis_rest_token',
+});
+
+const result = await redis.get('key');
+```
+
+### Deno
+
+Import directly from esm.sh:
+
+```typescript
+import { Redis } from 'https://esm.sh/@upstash/redis';
+
+const redis = new Redis({
+  url: Deno.env.get('UPSTASH_REDIS_REST_URL')!,
+  token: Deno.env.get('UPSTASH_REDIS_REST_TOKEN')!,
+});
+
+const value = await redis.get('key');
+```
+
+Alternatively, use deno.land/x:
+
+```typescript
+import { Redis } from 'https://deno.land/x/upstash_redis/mod.ts';
+```
+
+## Environment variables
+
+The SDK automatically reads credentials from environment variables when using `Redis.fromEnv()`.
+
+### Standard environment variables
+
+Set these variables in your `.env` file:
+
+```bash .env
+UPSTASH_REDIS_REST_URL="https://your-redis-url.upstash.io"
+UPSTASH_REDIS_REST_TOKEN="your_token_here"
+```
+
+### Vercel KV compatibility
+
+The SDK also supports Vercel KV environment variable names:
+
+```bash .env
+KV_REST_API_URL="https://your-redis-url.upstash.io"
+KV_REST_API_TOKEN="your_token_here"
+```
+
+<Info>
+If both sets of variables are present, `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` take precedence.
+</Info>
+
+### Using fromEnv()
+
+<CodeGroup>
+```typescript Node.js
+import { Redis } from '@upstash/redis';
+
+// Automatically reads from process.env
+const redis = Redis.fromEnv();
+```
+
+```typescript Cloudflare Workers
+import { Redis } from '@upstash/redis/cloudflare';
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env) {
+    // Pass the env object in Cloudflare Workers
+    const redis = Redis.fromEnv(env);
+    
+    // Your code here
+  },
+};
+```
+</CodeGroup>
+
+## Configuration options
+
+When creating a Redis client, you can configure various options:
+
+```typescript
+interface RedisConfigNodejs {
+  /**
+   * UPSTASH_REDIS_REST_URL
+   */
+  url: string;
+  
+  /**
+   * UPSTASH_REDIS_REST_TOKEN
+   */
+  token: string;
+  
+  /**
+   * Enable automatic pipelining to batch commands
+   * @default true
+   */
+  enableAutoPipelining?: boolean;
+  
+  /**
+   * Enable read-your-writes consistency
+   * @default false
+   */
+  readYourWrites?: boolean;
+  
+  /**
+   * Automatically deserialize JSON responses
+   * @default true
+   */
+  automaticDeserialization?: boolean;
+  
+  /**
+   * Enable telemetry for analytics
+   * @default true
+   */
+  enableTelemetry?: boolean;
+  
+  /**
+   * Configure retry behavior
+   */
+  retry?: {
+    retries: number;
+    backoff: (retryCount: number) => number;
+  };
+  
+  /**
+   * HTTP agent for connection pooling (Node.js only)
+   */
+  agent?: unknown;
+  
+  /**
+   * Enable HTTP keep-alive (Node.js only)
+   */
+  keepAlive?: boolean;
+  
+  /**
+   * AbortSignal for request cancellation
+   */
+  signal?: AbortSignal;
+}
+```
+
+### Example with options
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  
+  // Performance optimizations
+  enableAutoPipelining: true,
+  keepAlive: true,
+  
+  // Consistency
+  readYourWrites: true,
+  
+  // Privacy
+  enableTelemetry: false,
+  
+  // Retry configuration
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 100,
+  },
+});
+```
+
+## TypeScript configuration
+
+The SDK is written in TypeScript and includes type definitions. No additional `@types` package is needed.
+
+If you're using TypeScript, ensure your `tsconfig.json` includes:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true
+  }
+}
+```
+
+## CommonJS vs ES Modules
+
+The SDK supports both CommonJS and ES Modules:
+
+<CodeGroup>
+```javascript CommonJS
+const { Redis } = require('@upstash/redis');
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+```
+
+```javascript ES Modules
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+```
+</CodeGroup>
+
+## Bundler configuration
+
+The SDK works with all major bundlers without additional configuration.
+
+### Webpack
+
+No configuration needed. The SDK uses standard exports that Webpack handles automatically.
+
+### Vite
+
+No configuration needed. Vite will tree-shake unused code automatically.
+
+### esbuild
+
+No configuration needed. The SDK includes proper exports for esbuild.
+
+### Rollup
+
+No configuration needed. The SDK is compatible with Rollup's ES module handling.
+
+## Disabling telemetry
+
+The SDK sends anonymous telemetry data by default. To disable it:
+
+### Via environment variable
+
+```bash .env
+UPSTASH_DISABLE_TELEMETRY=1
+```
+
+### Via configuration
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableTelemetry: false,
+});
+```
+
+<Info>
+Telemetry helps improve the SDK by collecting:
+- SDK version
+- Platform (Cloudflare, Vercel, AWS, etc.)
+- Runtime version (e.g., node@18.x)
+
+No personal data or Redis commands are collected.
+</Info>
+
+## Verify installation
+
+Test your installation with this simple script:
+
+```typescript test.ts
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
+
+async function test() {
+  const result = await redis.ping();
+  console.log('Ping result:', result); // Should print: Ping result: PONG
+}
+
+test().catch(console.error);
+```
+
+Run it:
+
+<CodeGroup>
+```bash Node.js
+node test.ts
+```
+
+```bash Bun
+bun test.ts
+```
+
+```bash Deno
+deno run --allow-env --allow-net test.ts
+```
+</CodeGroup>
+
+If you see `Ping result: PONG`, your installation is successful!
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Module not found error">
+    Make sure you've installed the package:
+    
+    ```bash
+    npm install @upstash/redis
+    ```
+    
+    If using Cloudflare or Fastly, use the correct import:
+    
+    ```typescript
+    import { Redis } from '@upstash/redis/cloudflare';
+    // or
+    import { Redis } from '@upstash/redis/fastly';
+    ```
+  </Accordion>
+
+  <Accordion title="Environment variables not found">
+    Ensure your `.env` file is in the project root and you're loading it correctly:
+    
+    ```bash
+    npm install dotenv
+    ```
+    
+    ```typescript
+    import 'dotenv/config';
+    import { Redis } from '@upstash/redis';
+    
+    const redis = Redis.fromEnv();
+    ```
+  </Accordion>
+
+  <Accordion title="TypeScript errors">
+    Make sure you're using TypeScript 4.5 or higher:
+    
+    ```bash
+    npm install -D typescript@latest
+    ```
+    
+    Update your `tsconfig.json`:
+    
+    ```json
+    {
+      "compilerOptions": {
+        "moduleResolution": "node",
+        "esModuleInterop": true
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Cloudflare Workers compatibility">
+    Use the Cloudflare-specific import and ensure you're passing the `env` object:
+    
+    ```typescript
+    import { Redis } from '@upstash/redis/cloudflare';
+    
+    export default {
+      async fetch(request: Request, env: Env) {
+        const redis = Redis.fromEnv(env); // Pass env here
+        // ...
+      },
+    };
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Create your first Redis client
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference">
+    Explore all available commands
+  </Card>
+</CardGroup>

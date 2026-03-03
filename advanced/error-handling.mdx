@@ -1,0 +1,427 @@
+---
+title: Error Handling
+description: Understanding and handling errors in the Upstash Redis SDK
+---
+
+## Overview
+
+The Upstash Redis SDK provides specific error types to help you handle different failure scenarios. All errors extend the standard JavaScript `Error` class with additional context.
+
+## Error Types
+
+The SDK defines three main error types in `pkg/error.ts`:
+
+### UpstashError
+
+The base error class for general Redis operation failures:
+
+```typescript
+export class UpstashError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "UpstashError";
+  }
+}
+```
+
+**When it's thrown**:
+- Invalid Redis commands
+- Server-side errors
+- Invalid responses from Redis
+- Pipeline/transaction failures
+
+**Example**:
+```typescript
+import { Redis, UpstashError } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+try {
+  // Try to use HGET on a string key (type mismatch)
+  await redis.set('mykey', 'value');
+  await redis.hget('mykey', 'field');
+} catch (error) {
+  if (error instanceof UpstashError) {
+    console.error('Redis operation failed:', error.message);
+  }
+}
+```
+
+### UrlError
+
+Thrown when an invalid URL is provided during client initialization:
+
+```typescript
+export class UrlError extends Error {
+  constructor(url: string) {
+    super(
+      `Upstash Redis client was passed an invalid URL. You should pass a URL starting with https. Received: "${url}". `
+    );
+    this.name = "UrlError";
+  }
+}
+```
+
+**When it's thrown**:
+- URL doesn't start with `https://`
+- Malformed URL format
+
+**Example**:
+```typescript
+import { Redis, UrlError } from '@upstash/redis';
+
+try {
+  const redis = new Redis({
+    url: 'http://invalid-url.com', // Missing https
+    token: 'token',
+  });
+} catch (error) {
+  if (error instanceof UrlError) {
+    console.error('Invalid URL:', error.message);
+  }
+}
+```
+
+### UpstashJSONParseError
+
+Thrown when the SDK fails to parse a response from Redis:
+
+```typescript
+export class UpstashJSONParseError extends UpstashError {
+  constructor(body: string, options?: UpstashErrorOptions) {
+    const truncatedBody = body.length > 200 ? body.slice(0, 200) + "..." : body;
+    super(`Unable to parse response body: ${truncatedBody}`, options);
+    this.name = "UpstashJSONParseError";
+  }
+}
+```
+
+**When it's thrown**:
+- Response body is not valid JSON
+- Corrupted response data
+- Unexpected response format
+
+**Example**:
+```typescript
+import { UpstashJSONParseError } from '@upstash/redis';
+
+try {
+  const result = await redis.get('somekey');
+} catch (error) {
+  if (error instanceof UpstashJSONParseError) {
+    console.error('Failed to parse response:', error.message);
+    // The error message includes the truncated response body
+  }
+}
+```
+
+## Common Error Scenarios
+
+### Type Mismatch Errors
+
+Attempting an operation on the wrong data type:
+
+```typescript
+try {
+  await redis.set('user:1', 'John');
+  await redis.hget('user:1', 'name'); // Error: key is a string, not a hash
+} catch (error) {
+  if (error instanceof UpstashError) {
+    console.error('Type mismatch:', error.message);
+    // Handle by checking key type first or recreating the key
+  }
+}
+```
+
+### Authentication Errors
+
+```typescript
+try {
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: 'invalid-token',
+  });
+  
+  await redis.ping();
+} catch (error) {
+  console.error('Authentication failed:', error);
+  // Check your token and URL
+}
+```
+
+### Network Errors
+
+```typescript
+try {
+  await redis.get('mykey');
+} catch (error) {
+  if (error.message.includes('fetch failed') || error.message.includes('network')) {
+    console.error('Network error:', error);
+    // Implement retry logic
+  }
+}
+```
+
+### Pipeline Errors
+
+By default, pipeline errors cause the entire pipeline to fail:
+
+```typescript
+import { UpstashError } from '@upstash/redis';
+
+try {
+  const results = await redis.pipeline()
+    .set('key1', 'value1')
+    .hget('key1', 'field') // This will fail
+    .get('key2')
+    .exec();
+} catch (error) {
+  if (error instanceof UpstashError) {
+    console.error('Pipeline failed:', error.message);
+    // Error message indicates which command failed
+  }
+}
+```
+
+### Handling Pipeline Errors Individually
+
+Use `keepErrors` to handle errors per-command:
+
+```typescript
+const results = await redis.pipeline()
+  .set('key1', 'value1')
+  .hget('key1', 'field') // This will fail
+  .get('key1')
+  .exec({ keepErrors: true });
+
+results.forEach((item, index) => {
+  if (item.error) {
+    console.error(`Command ${index} failed:`, item.error);
+  } else {
+    console.log(`Command ${index} succeeded:`, item.result);
+  }
+});
+```
+
+## Best Practices
+
+### 1. Use Type Guards
+
+```typescript
+import { UpstashError, UrlError, UpstashJSONParseError } from '@upstash/redis';
+
+try {
+  await redis.get('mykey');
+} catch (error) {
+  if (error instanceof UrlError) {
+    // Handle configuration error
+    console.error('Configuration error:', error.message);
+  } else if (error instanceof UpstashJSONParseError) {
+    // Handle parsing error
+    console.error('Response parsing failed:', error.message);
+  } else if (error instanceof UpstashError) {
+    // Handle general Redis error
+    console.error('Redis error:', error.message);
+  } else {
+    // Handle unexpected errors
+    console.error('Unexpected error:', error);
+  }
+}
+```
+
+### 2. Implement Retry Logic
+
+```typescript
+async function getWithRetry<T>(
+  redis: Redis,
+  key: string,
+  maxRetries = 3
+): Promise<T | null> {
+  let lastError;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await redis.get<T>(key);
+    } catch (error) {
+      lastError = error;
+      
+      if (error instanceof UpstashJSONParseError) {
+        // Don't retry parsing errors
+        throw error;
+      }
+      
+      if (i < maxRetries - 1) {
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => 
+          setTimeout(resolve, Math.pow(2, i) * 1000)
+        );
+      }
+    }
+  }
+  
+  throw lastError;
+}
+```
+
+### 3. Graceful Degradation
+
+```typescript
+async function getUserData(userId: string) {
+  try {
+    const userData = await redis.hgetall(`user:${userId}`);
+    return userData;
+  } catch (error) {
+    console.error('Failed to fetch from Redis:', error);
+    
+    // Fallback to database or default values
+    return await fetchFromDatabase(userId);
+  }
+}
+```
+
+### 4. Transaction Error Handling
+
+```typescript
+try {
+  const results = await redis.multi()
+    .set('balance:user1', 100)
+    .decrby('balance:user1', 50)
+    .incrby('balance:user2', 50)
+    .exec();
+  
+  console.log('Transaction completed:', results);
+} catch (error) {
+  if (error instanceof UpstashError) {
+    console.error('Transaction failed:', error.message);
+    // Implement compensating transaction or rollback logic
+  }
+}
+```
+
+### 5. Validation Before Operations
+
+```typescript
+async function safeHashGet(key: string, field: string) {
+  try {
+    // Check key type first
+    const keyType = await redis.type(key);
+    
+    if (keyType !== 'hash' && keyType !== 'none') {
+      throw new Error(`Key '${key}' is of type '${keyType}', expected 'hash'`);
+    }
+    
+    return await redis.hget(key, field);
+  } catch (error) {
+    console.error('Safe hash get failed:', error);
+    return null;
+  }
+}
+```
+
+### 6. Logging and Monitoring
+
+```typescript
+import { UpstashError } from '@upstash/redis';
+
+function logRedisError(error: unknown, context: string) {
+  const errorInfo = {
+    context,
+    timestamp: new Date().toISOString(),
+    name: error instanceof Error ? error.name : 'Unknown',
+    message: error instanceof Error ? error.message : String(error),
+    isUpstashError: error instanceof UpstashError,
+  };
+  
+  // Send to your logging service
+  console.error('Redis Error:', errorInfo);
+  
+  // Optional: Send to monitoring service
+  // monitoring.trackError(errorInfo);
+}
+
+try {
+  await redis.get('mykey');
+} catch (error) {
+  logRedisError(error, 'getUserData');
+  throw error;
+}
+```
+
+## Error Cause Chain
+
+Upstash errors support the `cause` option for error chaining:
+
+```typescript
+try {
+  await someOperation();
+} catch (originalError) {
+  throw new UpstashError(
+    'Failed to process user data',
+    { cause: originalError }
+  );
+}
+```
+
+Access the cause:
+
+```typescript
+catch (error) {
+  if (error instanceof UpstashError && error.cause) {
+    console.error('Original error:', error.cause);
+  }
+}
+```
+
+## Debugging Tips
+
+### 1. Enable Latency Logging
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  latencyLogging: true,
+});
+```
+
+### 2. Inspect Error Objects
+
+```typescript
+catch (error) {
+  console.error('Error details:', {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    cause: error.cause,
+  });
+}
+```
+
+### 3. Test Error Scenarios
+
+```typescript
+// Test type mismatch
+try {
+  await redis.set('testkey', 'value');
+  await redis.hget('testkey', 'field');
+} catch (error) {
+  console.log('Expected type mismatch error:', error.message);
+}
+
+// Test invalid key
+try {
+  await redis.get('nonexistent');
+  console.log('Result is null for nonexistent keys');
+} catch (error) {
+  console.error('Unexpected error:', error);
+}
+```
+
+## See Also
+
+- [Transactions](/advanced/transactions)
+- [Pipelines](/api/pipeline)
+- [Configuration Options](/concepts/client-configuration)

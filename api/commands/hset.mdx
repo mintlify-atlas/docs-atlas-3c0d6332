@@ -1,0 +1,95 @@
+---
+title: 'HSET'
+description: 'Set hash field values'
+---
+
+## Usage
+
+Sets the specified fields to their respective values in the hash stored at `key`. This command overwrites any specified fields already existing in the hash.
+
+```typescript
+await redis.hset(key, fieldValueObject);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+<ParamField path="fieldValueObject" type="Record<string, TData>" required>
+  An object containing field-value pairs to set in the hash. Each key in the object represents a field name, and its value is the value to set.
+</ParamField>
+
+## Response
+
+<ResponseField name="count" type="number">
+  The number of fields that were added or updated in the hash.
+</ResponseField>
+
+## Examples
+
+### Set multiple hash fields
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set multiple fields at once
+const count = await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  age: 30
+});
+console.log(count); // 3
+
+// Update existing fields
+const updated = await redis.hset('user:1000', {
+  age: 31,
+  city: 'New York'
+});
+console.log(updated); // 2 (age updated, city added)
+```
+
+### Set a single field
+
+```typescript
+// Set one field
+await redis.hset('user:1000', { status: 'active' });
+```
+
+### Store complex objects
+
+```typescript
+interface Profile {
+  bio: string;
+  website: string;
+}
+
+const profile: Profile = {
+  bio: 'Software engineer',
+  website: 'https://example.com'
+};
+
+await redis.hset('user:1000:profile', profile);
+```
+
+### Store JSON data
+
+```typescript
+// Complex data is automatically serialized
+await redis.hset('user:1000', {
+  preferences: JSON.stringify({ theme: 'dark', notifications: true }),
+  metadata: JSON.stringify({ lastLogin: Date.now() })
+});
+```
+
+## See Also
+
+- [HGET](/api/commands/hget) - Get a hash field value
+- [HMSET](/api/commands/hmset) - Set multiple hash fields (legacy)
+- [HGETALL](/api/commands/hgetall) - Get all fields and values in a hash

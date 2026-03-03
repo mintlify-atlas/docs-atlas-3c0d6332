@@ -1,0 +1,154 @@
+---
+title: JSON.ARRINDEX
+description: Find the index of a value in a JSON array
+---
+
+Searches for the first occurrence of a value in a JSON array and returns its index.
+
+## Usage
+
+```typescript
+const index = await redis.json.arrindex("user:123", "$.tags", "premium");
+```
+
+## Arguments
+
+<ParamField path="key" type="string" required>
+  The key containing the JSON document
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  JSONPath expression pointing to the array to search
+</ParamField>
+
+<ParamField path="value" type="TValue" required>
+  The value to search for in the array
+</ParamField>
+
+<ParamField path="start" type="number">
+  Optional start index for the search (inclusive). Defaults to `0`. Negative values count from the end of the array.
+</ParamField>
+
+<ParamField path="stop" type="number">
+  Optional stop index for the search (exclusive). Defaults to the end of the array. Negative values count from the end of the array.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="(number | null)[]">
+  An array of integers representing the index of the first occurrence of the value at each matching path. Returns `-1` if the value is not found, or `null` if the path doesn't exist or isn't an array.
+</ResponseField>
+
+## Examples
+
+### Find value in array
+
+```typescript
+// Array: ["developer", "admin", "premium", "verified"]
+const index = await redis.json.arrindex("user:123", "$.tags", "premium");
+console.log(index); // [2]
+```
+
+### Value not found
+
+```typescript
+const index = await redis.json.arrindex("user:123", "$.tags", "nonexistent");
+console.log(index); // [-1]
+```
+
+### Search with start index
+
+```typescript
+// Array: ["a", "b", "c", "b", "d"]
+// Find "b" starting from index 2
+const index = await redis.json.arrindex("data:1", "$.letters", "b", 2);
+console.log(index); // [3] - finds the second "b"
+```
+
+### Search with start and stop indices
+
+```typescript
+// Array: ["a", "b", "c", "b", "d"]
+// Search for "b" between indices 0 and 3
+const index = await redis.json.arrindex("data:1", "$.letters", "b", 0, 3);
+console.log(index); // [1] - finds the first "b"
+```
+
+### Search with negative indices
+
+```typescript
+// Array: ["a", "b", "c", "d", "e"]
+// Search in the last 3 elements
+const index = await redis.json.arrindex("data:1", "$.letters", "d", -3);
+console.log(index); // [3]
+```
+
+### Search for objects in array
+
+```typescript
+interface Product {
+  id: string;
+  name: string;
+}
+
+// Array: [{"id":"1","name":"A"}, {"id":"2","name":"B"}]
+const searchProduct = { id: "2", name: "B" };
+const index = await redis.json.arrindex(
+  "products:1",
+  "$.items",
+  searchProduct
+);
+console.log(index); // [1]
+```
+
+### Search in multiple arrays (wildcard path)
+
+```typescript
+// Data: {
+//   "users": [
+//     { "id": 1, "roles": ["admin", "user"] },
+//     { "id": 2, "roles": ["user", "guest"] }
+//   ]
+// }
+
+const indices = await redis.json.arrindex(
+  "data:1",
+  "$.users[*].roles",
+  "user"
+);
+console.log(indices); // [1, 0] - "user" is at index 1 in first array, index 0 in second
+```
+
+### Handle non-existent paths
+
+```typescript
+const index = await redis.json.arrindex(
+  "user:123",
+  "$.nonexistent",
+  "value"
+);
+console.log(index); // [null]
+```
+
+## JSONPath Syntax
+
+- `$.array` - Search in a top-level array
+- `$.nested.array` - Search in a nested array
+- `$.items[0].tags` - Search in array within array element
+- `$..array` - Search in all matching arrays recursively
+- `$.users[*].roles` - Search in arrays within each user
+
+## Notes
+
+- Only the first occurrence within the search range is returned
+- Negative indices count backwards from the end of the array
+- The stop index is exclusive (not included in the search)
+- Returns `-1` if the value is not found in the array
+- Returns `null` if the path doesn't exist or doesn't point to an array
+- Object comparison is based on exact JSON match
+
+## See Also
+
+- [JSON.ARRAPPEND](/api/commands/json-arrappend) - Append values to array
+- [JSON.GET](/api/commands/json-get) - Get JSON values
+- [Redis JSON.ARRINDEX documentation](https://redis.io/commands/json.arrindex)

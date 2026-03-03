@@ -1,0 +1,142 @@
+---
+title: geohash
+description: Get Geohash strings representing positions of members
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const hashes = await redis.geohash("cities", "San Francisco", "London");
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the geospatial index.
+</ParamField>
+
+<ParamField path="members" type="string | string[]" required>
+  One or more members to get the Geohash for. Can be passed as individual arguments or as an array.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="(string | null)[]">
+  An array of Geohash strings in the same order as the requested members.
+  
+  Returns `null` for members that do not exist.
+</ResponseField>
+
+## Examples
+
+### Get Geohash for single member
+
+```typescript
+// First, add a city
+await redis.geoadd("cities", {
+  longitude: -122.4194,
+  latitude: 37.7749,
+  member: "San Francisco"
+});
+
+const hashes = await redis.geohash("cities", "San Francisco");
+// Returns: ["9q8yyk8yuv0"]
+```
+
+### Get Geohash for multiple members
+
+```typescript
+await redis.geoadd(
+  "cities",
+  {
+    longitude: -122.4194,
+    latitude: 37.7749,
+    member: "San Francisco"
+  },
+  {
+    longitude: -0.1276,
+    latitude: 51.5074,
+    member: "London"
+  },
+  {
+    longitude: 139.6917,
+    latitude: 35.6895,
+    member: "Tokyo"
+  }
+);
+
+const hashes = await redis.geohash("cities", "San Francisco", "London", "Tokyo");
+// Returns: ["9q8yyk8yuv0", "gcpvj0h0c60", "xn774c06kf0"]
+```
+
+### Handle missing members
+
+```typescript
+const hashes = await redis.geohash(
+  "cities",
+  "San Francisco",
+  "NonExistent",
+  "London"
+);
+// Returns: ["9q8yyk8yuv0", null, "gcpvj0h0c60"]
+```
+
+### Using array syntax
+
+```typescript
+const members = ["San Francisco", "London", "Tokyo"];
+const hashes = await redis.geohash("cities", ...members);
+// Returns: ["9q8yyk8yuv0", "gcpvj0h0c60", "xn774c06kf0"]
+```
+
+## What is a Geohash?
+
+A Geohash is a string encoding of a geographic location into a short string of letters and digits. It's a hierarchical spatial data structure that subdivides space into buckets of grid shape.
+
+### Properties
+
+- **Fixed length**: The Geohash returned by Redis is always 11 characters
+- **Proximity**: Locations close to each other tend to have similar Geohash prefixes
+- **Precision**: Each additional character increases precision:
+  - 1 character: ±2,500 km
+  - 5 characters: ±2.4 km
+  - 11 characters: ±0.6 mm
+
+### Use Cases
+
+```typescript
+// Get Geohashes
+const [hash1, hash2] = await redis.geohash("cities", "San Francisco", "Oakland");
+
+// Compare proximity by comparing prefixes
+const commonPrefix = (s1: string, s2: string) => {
+  let i = 0;
+  while (i < s1.length && i < s2.length && s1[i] === s2[i]) i++;
+  return s1.slice(0, i);
+};
+
+const prefix = commonPrefix(hash1, hash2);
+console.log(`Common prefix: ${prefix}`);
+// Longer common prefix = closer locations
+```
+
+## Important Notes
+
+### Encoding Details
+
+- Geohash uses a Base32 encoding system
+- Characters used: `0-9` and `b-z` (excluding `a`, `i`, `l`, `o`)
+- The hash represents the position, not the member name
+- Two members at the exact same coordinates will have the same Geohash
+
+### Limitations
+
+- Geohashes are not perfectly suited for proximity searches near the poles
+- Locations on opposite sides of the equator or prime meridian may have very different hashes despite being close

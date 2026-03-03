@@ -1,0 +1,109 @@
+---
+title: keys
+description: Find all keys matching a pattern
+---
+
+## Description
+
+Returns all keys matching a glob-style pattern. This command should be used with caution in production environments as it can impact performance on large databases.
+
+<Warning>
+Consider using `SCAN` instead of `KEYS` for production use cases. `KEYS` blocks the server until it completes, while `SCAN` provides an incremental iteration approach.
+</Warning>
+
+## Method Signature
+
+```typescript
+keys(pattern: string): Promise<string[]>
+```
+
+## Parameters
+
+<ParamField path="pattern" type="string" required>
+  The glob-style pattern to match keys against. Supported glob patterns:
+  - `*` matches any number of characters (including zero)
+  - `?` matches exactly one character
+  - `[abc]` matches one character from the set
+  - `[^abc]` matches one character not in the set
+  - `[a-z]` matches one character from the range
+  - `\` escapes special characters
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="string[]">
+  Array of keys matching the pattern. Returns an empty array if no keys match.
+</ResponseField>
+
+## Examples
+
+### Match all keys
+
+```typescript
+await redis.set("user:1", "Alice");
+await redis.set("user:2", "Bob");
+await redis.set("post:1", "Hello");
+
+const allKeys = await redis.keys("*");
+console.log(allKeys); // ["user:1", "user:2", "post:1"]
+```
+
+### Match with prefix
+
+```typescript
+const userKeys = await redis.keys("user:*");
+console.log(userKeys); // ["user:1", "user:2"]
+```
+
+### Match with wildcard in middle
+
+```typescript
+await redis.set("user:1:name", "Alice");
+await redis.set("user:1:email", "alice@example.com");
+await redis.set("user:2:name", "Bob");
+
+const user1Keys = await redis.keys("user:1:*");
+console.log(user1Keys); // ["user:1:name", "user:1:email"]
+```
+
+### Match single character
+
+```typescript
+await redis.set("key1", "a");
+await redis.set("key2", "b");
+await redis.set("key10", "c");
+
+const keys = await redis.keys("key?");
+console.log(keys); // ["key1", "key2"] (not key10)
+```
+
+### Match character range
+
+```typescript
+await redis.set("user:a", "Alice");
+await redis.set("user:b", "Bob");
+await redis.set("user:z", "Zoe");
+
+const keys = await redis.keys("user:[a-c]");
+console.log(keys); // ["user:a", "user:b"] (not user:z)
+```
+
+### No matches
+
+```typescript
+const keys = await redis.keys("nonexistent:*");
+console.log(keys); // []
+```
+
+## Performance Considerations
+
+`KEYS` is a blocking operation that scans the entire keyspace. For production use:
+
+- Use `SCAN` for incremental iteration
+- Avoid using `KEYS` on large databases
+- Consider using key naming schemes that allow targeted queries
+
+## See Also
+
+- [scan](/api/commands/scan) - Incrementally iterate over keys
+- [exists](/api/commands/exists) - Check if specific keys exist

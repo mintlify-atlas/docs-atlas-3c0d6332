@@ -1,0 +1,200 @@
+---
+title: 'ZRANGE'
+description: 'Return a range of members in a sorted set'
+---
+
+## Method Signature
+
+```typescript
+// By index (default)
+zrange(
+  key: string,
+  min: number,
+  max: number,
+  options?: ZRangeCommandOptions
+): Promise<TData>
+
+// By score
+zrange(
+  key: string,
+  min: number | `(${number}` | '-inf' | '+inf',
+  max: number | `(${number}` | '-inf' | '+inf',
+  options: { byScore: true } & ZRangeCommandOptions
+): Promise<TData>
+
+// By lexicographical order
+zrange(
+  key: string,
+  min: `(${string}` | `[${string}` | '-' | '+',
+  max: `(${string}` | `[${string}` | '-' | '+',
+  options: { byLex: true } & ZRangeCommandOptions
+): Promise<TData>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+<ParamField path="min" type="number | string" required>
+  The minimum range value:
+  - By index: 0-based index (use negative for reverse indexing, e.g., -1 for last element)
+  - By score: number, `(number` (exclusive), `-inf`, or `+inf`
+  - By lex: `[member` (inclusive), `(member` (exclusive), `-` (minimum), or `+` (maximum)
+</ParamField>
+
+<ParamField path="max" type="number | string" required>
+  The maximum range value (same format as min)
+</ParamField>
+
+<ParamField path="options" type="ZRangeCommandOptions">
+  Options to control the range query behavior
+</ParamField>
+
+### ZRangeCommandOptions
+
+<ParamField path="byScore" type="boolean">
+  Query by score range instead of index. Mutually exclusive with `byLex`.
+</ParamField>
+
+<ParamField path="byLex" type="boolean">
+  Query by lexicographical range instead of index. All members must have the same score. Mutually exclusive with `byScore`.
+</ParamField>
+
+<ParamField path="rev" type="boolean">
+  Reverse the ordering, so elements are returned from highest to lowest score
+</ParamField>
+
+<ParamField path="withScores" type="boolean">
+  Return scores along with members. The result will be a flat array alternating between members and scores.
+</ParamField>
+
+<ParamField path="offset" type="number">
+  Skip this many elements before returning results. Must be used together with `count`.
+</ParamField>
+
+<ParamField path="count" type="number">
+  Return at most this many elements. Must be used together with `offset`.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="TData">
+  An array of members in the specified range.
+  
+  When `withScores` is true, returns a flat array alternating between member and score: `[member1, score1, member2, score2, ...]`
+</ResponseField>
+
+## Examples
+
+### Get range by index
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Add members
+await redis.zadd(
+  'leaderboard',
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' },
+  { score: 92, member: 'player3' },
+  { score: 78, member: 'player4' }
+);
+
+// Get top 3 players (indices 0-2 in descending order)
+const top3 = await redis.zrange('leaderboard', 0, 2, { rev: true });
+console.log(top3); // ['player1', 'player3', 'player2']
+```
+
+### Get all members
+
+```typescript
+// Get all members from lowest to highest score
+const all = await redis.zrange('leaderboard', 0, -1);
+console.log(all); // ['player4', 'player2', 'player3', 'player1']
+```
+
+### Get range with scores
+
+```typescript
+const withScores = await redis.zrange('leaderboard', 0, 2, {
+  rev: true,
+  withScores: true,
+});
+console.log(withScores); // ['player1', 100, 'player3', 92, 'player2', 85]
+```
+
+### Get members by score range
+
+```typescript
+// Get all players with scores between 80 and 95
+const byScore = await redis.zrange('leaderboard', 80, 95, {
+  byScore: true,
+});
+console.log(byScore); // ['player2', 'player3']
+```
+
+### Get members by score range (exclusive)
+
+```typescript
+// Get players with scores greater than 80 and less than 95 (exclusive)
+const byScoreExclusive = await redis.zrange('leaderboard', '(80', '(95', {
+  byScore: true,
+});
+console.log(byScoreExclusive); // ['player2', 'player3']
+```
+
+### Get members with score infinity bounds
+
+```typescript
+// Get all players with scores greater than 90
+const highScores = await redis.zrange('leaderboard', 90, '+inf', {
+  byScore: true,
+});
+console.log(highScores); // ['player3', 'player1']
+```
+
+### Get members by lexicographical range
+
+```typescript
+// Add members with same score for lex ordering
+await redis.zadd(
+  'names',
+  { score: 0, member: 'alice' },
+  { score: 0, member: 'bob' },
+  { score: 0, member: 'charlie' },
+  { score: 0, member: 'diana' }
+);
+
+// Get names from 'b' to 'd' (inclusive)
+const byLex = await redis.zrange('names', '[b', '[d', {
+  byLex: true,
+});
+console.log(byLex); // ['bob', 'charlie', 'diana']
+```
+
+### Use limit with offset and count
+
+```typescript
+// Get 2 members starting from the 3rd highest score
+const paginated = await redis.zrange('leaderboard', 0, '+inf', {
+  byScore: true,
+  rev: true,
+  offset: 2,
+  count: 2,
+});
+console.log(paginated); // 2 members starting from rank 3
+```
+
+## Related Commands
+
+- [ZADD](/api/commands/zadd) - Add members to a sorted set
+- [ZRANK](/api/commands/zrank) - Get the rank of a member
+- [ZSCORE](/api/commands/zscore) - Get the score of a member
+- [ZCARD](/api/commands/zcard) - Get the number of members

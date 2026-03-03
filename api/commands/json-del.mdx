@@ -1,0 +1,104 @@
+---
+title: JSON.DEL
+description: Delete JSON values from Redis
+---
+
+Deletes a value at the specified path in a JSON document. If no path is specified, deletes the entire key.
+
+## Usage
+
+```typescript
+const deletedCount = await redis.json.del("user:123", "$.age");
+```
+
+## Arguments
+
+<ParamField path="key" type="string" required>
+  The key containing the JSON document
+</ParamField>
+
+<ParamField path="path" type="string">
+  JSONPath expression specifying which parts to delete. If omitted, deletes the entire key.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The number of paths deleted. Returns `0` if the key or path doesn't exist.
+</ResponseField>
+
+## Examples
+
+### Delete entire JSON document
+
+```typescript
+const deletedCount = await redis.json.del("user:123");
+console.log(deletedCount); // 1
+
+// Key is now deleted
+const user = await redis.json.get("user:123");
+console.log(user); // null
+```
+
+### Delete specific field
+
+```typescript
+// Before: { "name": "Alice", "age": 30, "email": "alice@example.com" }
+await redis.json.del("user:123", "$.age");
+
+// After: { "name": "Alice", "email": "alice@example.com" }
+const user = await redis.json.get("user:123");
+console.log(user);
+// { name: "Alice", email: "alice@example.com" }
+```
+
+### Delete nested field
+
+```typescript
+// Delete a nested field
+await redis.json.del("user:123", "$.address.zipcode");
+```
+
+### Delete array element
+
+```typescript
+// Before: { "tags": ["developer", "admin", "user"] }
+await redis.json.del("user:123", "$.tags[1]");
+
+// After: { "tags": ["developer", "user"] }
+```
+
+### Delete multiple paths
+
+```typescript
+// Using a wildcard path to delete multiple matching elements
+const deletedCount = await redis.json.del("store:1", "$.products[*].discount");
+console.log(`Deleted ${deletedCount} discount fields`);
+```
+
+### Check if deletion was successful
+
+```typescript
+const deletedCount = await redis.json.del("user:123", "$.premium");
+
+if (deletedCount > 0) {
+  console.log("Premium flag removed");
+} else {
+  console.log("Premium flag didn't exist");
+}
+```
+
+## JSONPath Syntax
+
+- `$` - Root element (deletes entire document)
+- `$.field` - Delete a specific field
+- `$.field[0]` - Delete array element at index
+- `$.nested.field` - Delete nested field
+- `$..field` - Delete all matching fields recursively
+- `$.array[*]` - Delete all array elements
+
+## See Also
+
+- [JSON.GET](/api/commands/json-get) - Get JSON values
+- [JSON.SET](/api/commands/json-set) - Set JSON values
+- [Redis JSON.DEL documentation](https://redis.io/commands/json.del)

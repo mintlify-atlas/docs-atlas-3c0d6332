@@ -1,0 +1,90 @@
+---
+title: expire
+description: Set a key's time to live in seconds
+---
+
+## Description
+
+Set a timeout on a key. After the timeout has expired, the key will automatically be deleted.
+
+## Method Signature
+
+```typescript
+expire(key: string, seconds: number, option?: ExpireOption): Promise<0 | 1>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to set expiration on
+</ParamField>
+
+<ParamField path="seconds" type="number" required>
+  The number of seconds until the key expires
+</ParamField>
+
+<ParamField path="option" type="ExpireOption">
+  Optional modifier for the expiration behavior:
+  - `"NX"` - Set expiry only when the key has no expiry
+  - `"XX"` - Set expiry only when the key has an existing expiry
+  - `"GT"` - Set expiry only when the new expiry is greater than current one
+  - `"LT"` - Set expiry only when the new expiry is less than current one
+  
+  Case-insensitive (can use lowercase: `"nx"`, `"xx"`, `"gt"`, `"lt"`)
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="0 | 1">
+  - `1` if the timeout was set
+  - `0` if the timeout was not set (key doesn't exist or condition not met)
+</ResponseField>
+
+## Examples
+
+### Basic expiration
+
+```typescript
+await redis.set("mykey", "value");
+const result = await redis.expire("mykey", 10);
+console.log(result); // 1
+
+// Key will be deleted after 10 seconds
+```
+
+### Set expiry only if key has no expiry (NX)
+
+```typescript
+await redis.set("mykey", "value");
+
+const result1 = await redis.expire("mykey", 100, "NX");
+console.log(result1); // 1 (set because key had no expiry)
+
+const result2 = await redis.expire("mykey", 50, "NX");
+console.log(result2); // 0 (not set because key already has expiry)
+```
+
+### Set expiry only if new expiry is greater (GT)
+
+```typescript
+await redis.set("mykey", "value");
+await redis.expire("mykey", 100);
+
+const result1 = await redis.expire("mykey", 200, "GT");
+console.log(result1); // 1 (200 > 100)
+
+const result2 = await redis.expire("mykey", 50, "GT");
+console.log(result2); // 0 (50 < 200)
+```
+
+### Non-existent key
+
+```typescript
+const result = await redis.expire("nonexistent", 10);
+console.log(result); // 0
+```
+
+## See Also
+
+- [ttl](/api/commands/ttl) - Get the time to live for a key
+- [persist](/api/commands/persist) - Remove the expiration from a key

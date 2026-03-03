@@ -1,0 +1,142 @@
+---
+title: Upstash Redis SDK
+description: HTTP-based Redis client for serverless and edge environments
+---
+
+Upstash Redis is an HTTP/REST based Redis client for TypeScript, built on top of the Upstash REST API. It's the only connectionless (HTTP-based) Redis client, designed specifically for modern serverless and edge computing platforms.
+
+## Why Upstash Redis?
+
+Traditional Redis clients use TCP connections, which don't work well in serverless environments. Upstash Redis solves this by using HTTP/REST, making it perfect for:
+
+- **Serverless functions** - AWS Lambda, Google Cloud Functions, Azure Functions
+- **Edge runtimes** - Cloudflare Workers, Fastly Compute@Edge, Vercel Edge Functions
+- **Modern frameworks** - Next.js, Remix, SvelteKit, and more
+- **Client-side applications** - Web and mobile apps
+- **WebAssembly** - Any environment where HTTP is preferred over TCP
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Get a working Redis client in under 5 minutes
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference">
+    Complete Redis command reference
+  </Card>
+  <Card title="Examples" icon="flask" href="/examples">
+    Platform-specific examples and code samples
+  </Card>
+  <Card title="Platform guides" icon="server" href="/platforms">
+    Setup guides for Cloudflare, Vercel, AWS, and more
+  </Card>
+</CardGroup>
+
+## Key features
+
+### Connectionless architecture
+
+No need to manage connection pools or worry about connection limits. Every command is a simple HTTP request.
+
+### Full Redis compatibility
+
+Supports all major Redis data structures and commands:
+
+- **Strings** - `get`, `set`, `incr`, `decr`
+- **Hashes** - `hget`, `hset`, `hgetall`
+- **Lists** - `lpush`, `rpush`, `lrange`
+- **Sets** - `sadd`, `smembers`, `sinter`
+- **Sorted sets** - `zadd`, `zrange`, `zrank`
+- **JSON** - Native JSON support with `json.get`, `json.set`
+- **Streams** - `xadd`, `xread`, `xrange`
+
+### TypeScript-first
+
+Fully typed with generic support for your data structures:
+
+```typescript
+interface User {
+  name: string;
+  email: string;
+}
+
+const user = await redis.hgetall<User>('user:123');
+// user is typed as User | null
+```
+
+### Auto-pipelining
+
+Automatically batches commands for optimal performance:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  enableAutoPipelining: true,
+});
+
+// These commands are automatically batched
+const [user, posts, count] = await Promise.all([
+  redis.get('user:123'),
+  redis.lrange('posts:123', 0, 10),
+  redis.incr('views:123'),
+]);
+```
+
+### Read-your-writes consistency
+
+Ensure strong consistency across globally distributed databases:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  readYourWrites: true,
+});
+```
+
+## Platform support
+
+<CardGroup cols={3}>
+  <Card title="Node.js" icon="node-js">
+    Full support for Node.js 14+
+  </Card>
+  <Card title="Cloudflare Workers" icon="cloudflare">
+    Optimized for Cloudflare Workers
+  </Card>
+  <Card title="Vercel" icon="triangle">
+    First-class Vercel integration
+  </Card>
+  <Card title="Deno" icon="deno">
+    Native Deno support via ESM
+  </Card>
+  <Card title="Fastly" icon="gauge">
+    Compute@Edge compatible
+  </Card>
+  <Card title="Bun" icon="bread-slice">
+    Works seamlessly with Bun
+  </Card>
+</CardGroup>
+
+## Production ready
+
+<Note>
+This project is in General Availability (GA) stage. It receives regular updates and bug fixes, with full support from the Upstash team.
+</Note>
+
+The SDK is battle-tested and used in production by thousands of developers. It includes:
+
+- Automatic retries with exponential backoff
+- Comprehensive error handling
+- Built-in telemetry (can be disabled)
+- Environment variable support
+- Custom middleware support
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="play" href="/quickstart">
+    Create your first Redis client
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Install for your platform
+  </Card>
+</CardGroup>

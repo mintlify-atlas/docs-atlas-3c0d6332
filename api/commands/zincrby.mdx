@@ -1,0 +1,179 @@
+---
+title: 'ZINCRBY'
+description: 'Increment the score of a member in a sorted set'
+---
+
+## Method Signature
+
+```typescript
+zincrby(
+  key: string,
+  increment: number,
+  member: TData
+): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+<ParamField path="increment" type="number" required>
+  The amount to increment the score by. Can be negative to decrement the score.
+</ParamField>
+
+<ParamField path="member" type="TData" required>
+  The member whose score should be incremented. If the member does not exist, it is added to the sorted set with the increment as its score.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The new score of the member after the increment operation
+</ResponseField>
+
+## Examples
+
+### Increment a member's score
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Add initial member
+await redis.zadd('leaderboard', { score: 100, member: 'player1' });
+
+// Increment player1's score by 10
+const newScore = await redis.zincrby('leaderboard', 10, 'player1');
+console.log(newScore); // 110
+```
+
+### Decrement a member's score
+
+```typescript
+// Use a negative increment to decrease the score
+const newScore = await redis.zincrby('leaderboard', -5, 'player1');
+console.log(newScore); // 105 (if previous score was 110)
+```
+
+### Add new member with increment
+
+```typescript
+// If member doesn't exist, it's created with the increment as its score
+const score = await redis.zincrby('leaderboard', 50, 'newplayer');
+console.log(score); // 50
+```
+
+### Track points over time
+
+```typescript
+// Award points for completing tasks
+await redis.zincrby('leaderboard', 10, 'player1'); // Completed task 1
+await redis.zincrby('leaderboard', 25, 'player1'); // Completed task 2
+await redis.zincrby('leaderboard', 15, 'player1'); // Completed task 3
+
+// Get final score
+const finalScore = await redis.zscore('leaderboard', 'player1');
+console.log(`Total points: ${finalScore}`); // 50 (10 + 25 + 15)
+```
+
+### Award bonus points
+
+```typescript
+const player = 'player1';
+const bonusPoints = 100;
+
+const newScore = await redis.zincrby('leaderboard', bonusPoints, player);
+console.log(`${player} earned ${bonusPoints} bonus points!`);
+console.log(`New score: ${newScore}`);
+```
+
+### Implement daily streaks
+
+```typescript
+// Increment streak count
+const streak = await redis.zincrby('user:streaks', 1, 'user123');
+console.log(`Current streak: ${streak} days`);
+
+if (streak >= 7) {
+  console.log('Achievement unlocked: 7-day streak!');
+}
+```
+
+### Track negative metrics
+
+```typescript
+// Track penalties or deductions
+const penalties = await redis.zincrby('penalties', 1, 'player1');
+console.log(`Total penalties: ${penalties}`);
+
+if (penalties >= 3) {
+  console.log('Warning: Too many penalties!');
+}
+```
+
+### Atomic counter with ranking
+
+```typescript
+// Increment view count and maintain ranking
+const views = await redis.zincrby('popular:posts', 1, 'post:123');
+console.log(`Post has ${views} views`);
+
+// Get rank among all posts
+const rank = await redis.zrank('popular:posts', 'post:123');
+const totalPosts = await redis.zcard('popular:posts');
+
+if (rank !== null) {
+  const position = totalPosts - rank;
+  console.log(`Ranked #${position} of ${totalPosts} posts`);
+}
+```
+
+### Implement voting system
+
+```typescript
+// Upvote
+const upvote = async (itemId: string) => {
+  const newScore = await redis.zincrby('votes', 1, itemId);
+  console.log(`${itemId} now has ${newScore} votes`);
+  return newScore;
+};
+
+// Downvote
+const downvote = async (itemId: string) => {
+  const newScore = await redis.zincrby('votes', -1, itemId);
+  console.log(`${itemId} now has ${newScore} votes`);
+  return newScore;
+};
+
+await upvote('post:1');
+await upvote('post:1');
+await downvote('post:1');
+// Final score: 1
+```
+
+### Calculate running averages
+
+```typescript
+// Track cumulative scores
+const score = 85;
+const newTotal = await redis.zincrby('test:totals', score, 'student1');
+
+// Track number of tests taken
+const testCount = await redis.zincrby('test:counts', 1, 'student1');
+
+const average = newTotal / testCount;
+console.log(`Average score: ${average.toFixed(2)}`);
+```
+
+## Related Commands
+
+- [ZADD](/api/commands/zadd) - Add or update members in a sorted set
+- [ZSCORE](/api/commands/zscore) - Get the score of a member
+- [ZRANK](/api/commands/zrank) - Get the rank of a member
+- [ZRANGE](/api/commands/zrange) - Return a range of members

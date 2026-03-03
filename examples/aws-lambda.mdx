@@ -1,0 +1,399 @@
+---
+title: "AWS Lambda"
+description: "Deploy Upstash Redis with AWS Lambda functions"
+---
+
+This guide demonstrates how to use Upstash Redis in AWS Lambda functions. The HTTP-based connection makes it perfect for serverless environments where traditional TCP connections are problematic.
+
+## Why Upstash Redis for Lambda?
+
+- **Connectionless**: HTTP-based, no connection pooling needed
+- **Fast cold starts**: No connection overhead
+- **Pay-per-request**: Aligned with Lambda's pricing model
+- **Global**: Low latency from any AWS region
+
+## Prerequisites
+
+<Steps>
+  <Step title="Create AWS Account">
+    Sign up for an [AWS account](https://aws.amazon.com/) if you don't have one
+  </Step>
+  
+  <Step title="Install AWS CLI">
+    [Set up and configure AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html) with your credentials
+  </Step>
+  
+  <Step title="Create Upstash Redis Database">
+    Create a Redis database using [Upstash Console](https://console.upstash.com) or [Upstash CLI](https://github.com/upstash/cli)
+  </Step>
+</Steps>
+
+## Quick Start
+
+### Project Setup
+
+<Steps>
+  <Step title="Create Project Directory">
+    ```bash
+    mkdir my-lambda-function
+    cd my-lambda-function
+    ```
+  </Step>
+  
+  <Step title="Initialize npm and Install Dependencies">
+    ```bash
+    npm init -y
+    npm install @upstash/redis
+    ```
+  </Step>
+  
+  <Step title="Create Lambda Function">
+    Create `index.js` with your Lambda handler code
+  </Step>
+</Steps>
+
+## Example: Counter Function
+
+This example implements a simple counter that increments on each Lambda invocation.
+
+<CodeGroup>
+```javascript index.js
+const { Redis } = require('@upstash/redis');
+
+const redis = Redis.fromEnv();
+
+exports.handler = async (event) => {
+    const count = await redis.incr("counter");
+    return {
+        statusCode: 200,
+        body: JSON.stringify('Counter: ' + count),
+    };
+};
+```
+
+```json package.json
+{
+  "dependencies": {
+    "@upstash/redis": "latest"
+  }
+}
+```
+</CodeGroup>
+
+## Deployment
+
+### Create Deployment Package
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+  
+  <Step title="Create ZIP Archive">
+    ```bash
+    zip -r my_deployment_package.zip .
+    ```
+    
+    This creates a ZIP file containing your code and `node_modules`.
+  </Step>
+</Steps>
+
+### Deploy with AWS CLI
+
+```bash
+aws lambda create-function --function-name counterFunction \
+--runtime nodejs20.x --handler index.handler \
+--role <YOUR_LAMBDA_EXECUTION_ROLE_ARN> \
+--zip-file fileb://my_deployment_package.zip \
+--region us-east-1 \
+--environment "Variables={UPSTASH_REDIS_REST_URL=<YOUR_URL>,UPSTASH_REDIS_REST_TOKEN=<YOUR_TOKEN>}"
+```
+
+<Note>
+  Replace `<YOUR_LAMBDA_EXECUTION_ROLE_ARN>` with your Lambda execution role ARN. This role must have basic Lambda execution permissions.
+</Note>
+
+### Get Your Upstash Credentials
+
+From your [Upstash Console](https://console.upstash.com):
+
+1. Select your Redis database
+2. Click on the **REST API** tab
+3. Copy the `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
+
+## Advanced Examples
+
+### Session Storage
+
+```javascript
+const { Redis } = require('@upstash/redis');
+
+const redis = Redis.fromEnv();
+
+exports.handler = async (event) => {
+    const sessionId = event.headers['session-id'];
+    
+    if (!sessionId) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Session ID required' })
+        };
+    }
+    
+    // Get or create session
+    let session = await redis.get(`session:${sessionId}`);
+    
+    if (!session) {
+        session = {
+            id: sessionId,
+            createdAt: Date.now(),
+            visits: 0
+        };
+    }
+    
+    // Update session
+    session.visits++;
+    session.lastVisit = Date.now();
+    
+    // Store with 1 hour expiration
+    await redis.set(`session:${sessionId}`, session, { ex: 3600 });
+    
+    return {
+        statusCode: 200,
+        body: JSON.stringify(session)
+    };
+};
+```
+
+### Rate Limiting
+
+```javascript
+const { Redis } = require('@upstash/redis');
+
+const redis = Redis.fromEnv();
+
+const RATE_LIMIT = 10; // requests per minute
+const WINDOW = 60; // seconds
+
+exports.handler = async (event) => {
+    const ip = event.requestContext.identity.sourceIp;
+    const key = `rate_limit:${ip}`;
+    
+    // Increment request count
+    const requests = await redis.incr(key);
+    
+    // Set expiration on first request
+    if (requests === 1) {
+        await redis.expire(key, WINDOW);
+    }
+    
+    // Check if limit exceeded
+    if (requests > RATE_LIMIT) {
+        return {
+            statusCode: 429,
+            body: JSON.stringify({
+                error: 'Rate limit exceeded',
+                retryAfter: await redis.ttl(key)
+            })
+        };
+    }
+    
+    return {
+        statusCode: 200,
+        body: JSON.stringify({
+            message: 'Request successful',
+            remaining: RATE_LIMIT - requests
+        })
+    };
+};
+```
+
+### Caching API Responses
+
+```javascript
+const { Redis } = require('@upstash/redis');
+
+const redis = Redis.fromEnv();
+
+exports.handler = async (event) => {
+    const userId = event.pathParameters.userId;
+    const cacheKey = `user:${userId}`;
+    
+    // Try to get from cache
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+        return {
+            statusCode: 200,
+            headers: { 'X-Cache': 'HIT' },
+            body: JSON.stringify(cached)
+        };
+    }
+    
+    // Fetch from database (simulated)
+    const userData = {
+        id: userId,
+        name: 'John Doe',
+        email: 'john@example.com',
+        fetchedAt: new Date().toISOString()
+    };
+    
+    // Store in cache for 5 minutes
+    await redis.set(cacheKey, userData, { ex: 300 });
+    
+    return {
+        statusCode: 200,
+        headers: { 'X-Cache': 'MISS' },
+        body: JSON.stringify(userData)
+    };
+};
+```
+
+## Best Practices
+
+### Use Environment Variables
+
+Always use environment variables for credentials, never hardcode them:
+
+```javascript
+const redis = Redis.fromEnv();
+// This automatically reads UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
+```
+
+### Error Handling
+
+```javascript
+const { Redis } = require('@upstash/redis');
+
+const redis = Redis.fromEnv();
+
+exports.handler = async (event) => {
+    try {
+        const count = await redis.incr("counter");
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ count })
+        };
+    } catch (error) {
+        console.error('Redis error:', error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'Internal server error' })
+        };
+    }
+};
+```
+
+### Optimize Cold Starts
+
+Initialize the Redis client outside the handler to reuse connections across warm starts:
+
+```javascript
+const { Redis } = require('@upstash/redis');
+
+// Initialize outside handler
+const redis = Redis.fromEnv();
+
+exports.handler = async (event) => {
+    // Handler code uses redis client
+    const result = await redis.get('key');
+    return { statusCode: 200, body: JSON.stringify(result) };
+};
+```
+
+## Infrastructure as Code
+
+### AWS SAM
+
+For AWS SAM examples, see the [aws-sam example directory](https://github.com/upstash/upstash-redis/tree/main/examples/aws-sam).
+
+### AWS CDK
+
+For AWS CDK examples (TypeScript and Python), see:
+- [AWS CDK TypeScript example](https://github.com/upstash/upstash-redis/tree/main/examples/aws-cdk-typescript)
+- [AWS CDK Python example](https://github.com/upstash/upstash-redis/tree/main/examples/aws-cdk-python)
+
+### Terraform
+
+For Terraform deployment examples, see the [Terraform example directory](https://github.com/upstash/upstash-redis/tree/main/examples/terraform).
+
+## Testing Locally
+
+### Invoke Function Locally
+
+```bash
+# Set environment variables
+export UPSTASH_REDIS_REST_URL="your-url"
+export UPSTASH_REDIS_REST_TOKEN="your-token"
+
+# Run with Node.js
+node -e "require('./index').handler({}).then(console.log)"
+```
+
+### Using AWS SAM CLI
+
+```bash
+sam local invoke counterFunction --env-vars env.json
+```
+
+## Monitoring
+
+### CloudWatch Logs
+
+Add logging to track Redis operations:
+
+```javascript
+exports.handler = async (event) => {
+    console.log('Processing request:', JSON.stringify(event));
+    
+    const start = Date.now();
+    const count = await redis.incr("counter");
+    const duration = Date.now() - start;
+    
+    console.log(`Redis operation completed in ${duration}ms`);
+    
+    return {
+        statusCode: 200,
+        body: JSON.stringify({ count })
+    };
+};
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Connection Timeout">
+    Ensure your Lambda function has internet access. If in a VPC, verify NAT Gateway or VPC endpoints are configured.
+  </Accordion>
+  
+  <Accordion title="Module Not Found">
+    Make sure `node_modules` is included in your deployment package. Run `npm install` before creating the ZIP file.
+  </Accordion>
+  
+  <Accordion title="Environment Variables Not Set">
+    Verify environment variables are set in Lambda configuration:
+    ```bash
+    aws lambda get-function-configuration --function-name counterFunction
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Cloudflare Workers" icon="cloudflare" href="/examples/cloudflare-workers">
+    Deploy with Cloudflare Workers
+  </Card>
+  <Card title="Next.js" icon="react" href="/examples/next-js">
+    Use Redis in Next.js applications
+  </Card>
+  <Card title="Basic Usage" icon="book" href="/examples/basic-usage">
+    Learn more Redis operations
+  </Card>
+  <Card title="GitHub Examples" icon="github" href="https://github.com/upstash/upstash-redis/tree/main/examples">
+    Browse all examples on GitHub
+  </Card>
+</CardGroup>

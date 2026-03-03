@@ -1,0 +1,146 @@
+---
+title: geodist
+description: Get the distance between two geospatial members
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const distance = await redis.geodist("cities", "San Francisco", "Los Angeles", "MI");
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the geospatial index.
+</ParamField>
+
+<ParamField path="member1" type="string" required>
+  The first member to measure from.
+</ParamField>
+
+<ParamField path="member2" type="string" required>
+  The second member to measure to.
+</ParamField>
+
+<ParamField path="unit" type="'M' | 'KM' | 'FT' | 'MI'" default="M">
+  The unit of distance to return:
+  
+  - `M` - Meters (default)
+  - `KM` - Kilometers
+  - `FT` - Feet
+  - `MI` - Miles
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number | null">
+  The distance between the two members in the specified unit.
+  
+  Returns `null` if one or both members do not exist.
+</ResponseField>
+
+## Examples
+
+### Get distance in different units
+
+```typescript
+// First, add some cities
+await redis.geoadd(
+  "cities",
+  {
+    longitude: -122.4194,
+    latitude: 37.7749,
+    member: "San Francisco"
+  },
+  {
+    longitude: -118.2437,
+    latitude: 34.0522,
+    member: "Los Angeles"
+  }
+);
+
+// Distance in meters (default)
+const meters = await redis.geodist("cities", "San Francisco", "Los Angeles");
+// Returns: 559120.3819 (approximately)
+
+// Distance in kilometers
+const km = await redis.geodist("cities", "San Francisco", "Los Angeles", "KM");
+// Returns: 559.1204 (approximately)
+
+// Distance in miles
+const miles = await redis.geodist("cities", "San Francisco", "Los Angeles", "MI");
+// Returns: 347.4203 (approximately)
+
+// Distance in feet
+const feet = await redis.geodist("cities", "San Francisco", "Los Angeles", "FT");
+// Returns: 1834318.8385 (approximately)
+```
+
+### Handle missing members
+
+```typescript
+const distance = await redis.geodist("cities", "San Francisco", "NonExistent", "MI");
+// Returns: null (member doesn't exist)
+```
+
+### Calculate multiple distances
+
+```typescript
+await redis.geoadd(
+  "cities",
+  {
+    longitude: -73.935242,
+    latitude: 40.730610,
+    member: "New York"
+  },
+  {
+    longitude: 2.3522,
+    latitude: 48.8566,
+    member: "Paris"
+  },
+  {
+    longitude: 139.6917,
+    latitude: 35.6895,
+    member: "Tokyo"
+  }
+);
+
+const distances = {
+  nyToSf: await redis.geodist("cities", "New York", "San Francisco", "MI"),
+  nyToParis: await redis.geodist("cities", "New York", "Paris", "MI"),
+  parisToTokyo: await redis.geodist("cities", "Paris", "Tokyo", "MI")
+};
+
+console.log(distances);
+// {
+//   nyToSf: 2565.88,
+//   nyToParis: 3628.42,
+//   parisToTokyo: 6034.23
+// }
+```
+
+## Important Notes
+
+### Distance Calculation
+
+- Distances are calculated using the Haversine formula
+- The Earth is assumed to be a perfect sphere
+- Results are approximations and may differ slightly from other geospatial systems
+- The precision of the distance depends on the precision of the stored coordinates
+
+### Unit Conversions
+
+| Unit | Abbreviation | Conversion |
+|------|--------------|------------|
+| Meters | M | Base unit |
+| Kilometers | KM | 1 KM = 1000 M |
+| Feet | FT | 1 FT ≈ 0.3048 M |
+| Miles | MI | 1 MI ≈ 1609.34 M |

@@ -1,0 +1,195 @@
+---
+title: 'ZCOUNT'
+description: 'Count the members in a sorted set within a score range'
+---
+
+## Method Signature
+
+```typescript
+zcount(
+  key: string,
+  min: number | string,
+  max: number | string
+): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+<ParamField path="min" type="number | string" required>
+  The minimum score in the range:
+  - `number` - Inclusive minimum score
+  - `(number` - Exclusive minimum score (e.g., `(50` means greater than 50)
+  - `-inf` - Negative infinity (all scores below max)
+</ParamField>
+
+<ParamField path="max" type="number | string" required>
+  The maximum score in the range:
+  - `number` - Inclusive maximum score
+  - `(number` - Exclusive maximum score (e.g., `(100` means less than 100)
+  - `+inf` - Positive infinity (all scores above min)
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The number of members in the sorted set with scores in the specified range
+</ResponseField>
+
+## Examples
+
+### Count members in a score range
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Add members to a leaderboard
+await redis.zadd(
+  'leaderboard',
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' },
+  { score: 92, member: 'player3' },
+  { score: 78, member: 'player4' },
+  { score: 95, member: 'player5' }
+);
+
+// Count players with scores between 80 and 95 (inclusive)
+const count = await redis.zcount('leaderboard', 80, 95);
+console.log(count); // 3 (player2: 85, player3: 92, player5: 95)
+```
+
+### Count with exclusive bounds
+
+```typescript
+// Count players with scores greater than 80 and less than 95 (exclusive)
+const count = await redis.zcount('leaderboard', '(80', '(95');
+console.log(count); // 2 (player2: 85, player3: 92)
+```
+
+### Count all scores above a threshold
+
+```typescript
+// Count all players with scores above 90
+const highScorers = await redis.zcount('leaderboard', 90, '+inf');
+console.log(`${highScorers} players have scores above 90`);
+```
+
+### Count all scores below a threshold
+
+```typescript
+// Count all players with scores below 85
+const lowScorers = await redis.zcount('leaderboard', '-inf', 85);
+console.log(`${lowScorers} players have scores of 85 or below`);
+```
+
+### Count all members
+
+```typescript
+// Count all members (equivalent to ZCARD)
+const totalCount = await redis.zcount('leaderboard', '-inf', '+inf');
+console.log(`Total members: ${totalCount}`);
+```
+
+### Grade distribution analysis
+
+```typescript
+// Count students in different grade ranges
+const [aGrades, bGrades, cGrades, dGrades, fGrades] = await Promise.all([
+  redis.zcount('exam:scores', 90, 100),   // A: 90-100
+  redis.zcount('exam:scores', 80, '(90'), // B: 80-89
+  redis.zcount('exam:scores', 70, '(80'), // C: 70-79
+  redis.zcount('exam:scores', 60, '(70'), // D: 60-69
+  redis.zcount('exam:scores', 0, '(60'),  // F: 0-59
+]);
+
+console.log('Grade Distribution:');
+console.log(`  A: ${aGrades}`);
+console.log(`  B: ${bGrades}`);
+console.log(`  C: ${cGrades}`);
+console.log(`  D: ${dGrades}`);
+console.log(`  F: ${fGrades}`);
+```
+
+### Calculate percentile
+
+```typescript
+const score = 85;
+const totalMembers = await redis.zcard('leaderboard');
+const countBelow = await redis.zcount('leaderboard', '-inf', `(${score}`);
+
+if (totalMembers > 0) {
+  const percentile = (countBelow / totalMembers) * 100;
+  console.log(`Score of ${score} is in the ${percentile.toFixed(1)}th percentile`);
+}
+```
+
+### Monitor score ranges
+
+```typescript
+// Check if there are enough high-scoring players for a tournament
+const qualifyingScore = 90;
+const qualifiedCount = await redis.zcount('leaderboard', qualifyingScore, '+inf');
+const requiredPlayers = 8;
+
+if (qualifiedCount >= requiredPlayers) {
+  console.log(`${qualifiedCount} players qualified for the tournament!`);
+} else {
+  console.log(`Need ${requiredPlayers - qualifiedCount} more qualified players`);
+}
+```
+
+### Price range filtering
+
+```typescript
+// Count products in a price range
+const minPrice = 50;
+const maxPrice = 200;
+
+const productsInRange = await redis.zcount('products:by-price', minPrice, maxPrice);
+console.log(`${productsInRange} products between $${minPrice} and $${maxPrice}`);
+```
+
+### Time-based analysis
+
+```typescript
+// Count events in a time window (using timestamps as scores)
+const now = Date.now();
+const oneDayAgo = now - 24 * 60 * 60 * 1000;
+
+const recentEvents = await redis.zcount('events:timeline', oneDayAgo, now);
+console.log(`${recentEvents} events in the last 24 hours`);
+```
+
+### Statistical analysis
+
+```typescript
+// Analyze score distribution
+const totalMembers = await redis.zcard('leaderboard');
+
+if (totalMembers > 0) {
+  const quartile1 = await redis.zcount('leaderboard', '-inf', 75);
+  const quartile2 = await redis.zcount('leaderboard', '-inf', 85);
+  const quartile3 = await redis.zcount('leaderboard', '-inf', 95);
+  
+  console.log('Score Distribution:');
+  console.log(`  0-75: ${quartile1} (${(quartile1/totalMembers*100).toFixed(1)}%)`);
+  console.log(`  75-85: ${quartile2 - quartile1} (${((quartile2-quartile1)/totalMembers*100).toFixed(1)}%)`);
+  console.log(`  85-95: ${quartile3 - quartile2} (${((quartile3-quartile2)/totalMembers*100).toFixed(1)}%)`);
+  console.log(`  95+: ${totalMembers - quartile3} (${((totalMembers-quartile3)/totalMembers*100).toFixed(1)}%)`);
+}
+```
+
+## Related Commands
+
+- [ZCARD](/api/commands/zcard) - Get the total number of members
+- [ZRANGE](/api/commands/zrange) - Return members in a range
+- [ZSCORE](/api/commands/zscore) - Get the score of a member
+- [ZADD](/api/commands/zadd) - Add members to a sorted set

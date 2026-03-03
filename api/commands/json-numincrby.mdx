@@ -1,0 +1,175 @@
+---
+title: JSON.NUMINCRBY
+description: Increment a number in a JSON document
+---
+
+Increments the numeric value at the specified path by a given amount. Supports both integers and floating-point numbers.
+
+## Usage
+
+```typescript
+const newValue = await redis.json.numincrby("user:123", "$.score", 10);
+```
+
+## Arguments
+
+<ParamField path="key" type="string" required>
+  The key containing the JSON document
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  JSONPath expression pointing to the numeric value to increment
+</ParamField>
+
+<ParamField path="value" type="number" required>
+  The increment value. Can be positive (to increase) or negative (to decrease). Supports both integers and floating-point numbers.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="(number | null)[]">
+  An array of numbers representing the new value at each matching path after the increment. Returns `null` for paths that don't exist or aren't numeric values.
+</ResponseField>
+
+## Examples
+
+### Increment an integer
+
+```typescript
+// Initial: { "score": 100 }
+const newScore = await redis.json.numincrby("user:123", "$.score", 50);
+console.log(newScore); // [150]
+
+// Result: { "score": 150 }
+```
+
+### Decrement by using negative value
+
+```typescript
+// Initial: { "balance": 1000 }
+const newBalance = await redis.json.numincrby("account:456", "$.balance", -250);
+console.log(newBalance); // [750]
+
+// Result: { "balance": 750 }
+```
+
+### Increment a floating-point number
+
+```typescript
+// Initial: { "price": 19.99 }
+const newPrice = await redis.json.numincrby("product:789", "$.price", 5.50);
+console.log(newPrice); // [25.49]
+
+// Result: { "price": 25.49 }
+```
+
+### Increment nested numeric value
+
+```typescript
+interface UserStats {
+  profile: {
+    name: string;
+    stats: {
+      points: number;
+      level: number;
+    };
+  };
+}
+
+const newPoints = await redis.json.numincrby(
+  "user:123",
+  "$.profile.stats.points",
+  100
+);
+console.log(newPoints); // [1100]
+```
+
+### Increment multiple values (wildcard path)
+
+```typescript
+// Initial: {
+//   "products": [
+//     { "id": 1, "stock": 10 },
+//     { "id": 2, "stock": 5 }
+//   ]
+// }
+
+const newStocks = await redis.json.numincrby(
+  "inventory:1",
+  "$.products[*].stock",
+  -1
+);
+console.log(newStocks); // [9, 4]
+
+// Result: All product stocks decreased by 1
+```
+
+### Increment with decimal precision
+
+```typescript
+// Useful for currency calculations
+const newTotal = await redis.json.numincrby(
+  "order:123",
+  "$.total",
+  0.01
+);
+console.log(newTotal); // [99.99]
+```
+
+### Track counter
+
+```typescript
+// Increment page view counter
+const views = await redis.json.numincrby(
+  "analytics:homepage",
+  "$.views",
+  1
+);
+console.log(`Total views: ${views[0]}`);
+```
+
+### Handle non-existent paths
+
+```typescript
+const result = await redis.json.numincrby(
+  "user:123",
+  "$.nonexistent",
+  10
+);
+console.log(result); // [null]
+```
+
+### Handle non-numeric values
+
+```typescript
+// Initial: { "name": "Alice" }
+const result = await redis.json.numincrby(
+  "user:123",
+  "$.name",
+  10
+);
+console.log(result); // [null] - cannot increment a string
+```
+
+## JSONPath Syntax
+
+- `$.number` - Increment a top-level number
+- `$.nested.number` - Increment a nested number
+- `$.object.count` - Increment a number within an object
+- `$..count` - Increment all matching numbers recursively
+- `$.items[*].quantity` - Increment numbers within each item
+
+## Notes
+
+- The operation is atomic - the increment happens as a single operation
+- Both integers and floating-point numbers are supported
+- Negative values can be used to decrement
+- Returns `null` if the path doesn't exist or doesn't point to a numeric value
+- When using wildcard paths, the operation is performed on all matching numeric values
+- Floating-point arithmetic follows standard IEEE 754 rules
+
+## See Also
+
+- [JSON.SET](/api/commands/json-set) - Set JSON values
+- [JSON.GET](/api/commands/json-get) - Get JSON values
+- [Redis JSON.NUMINCRBY documentation](https://redis.io/commands/json.numincrby)

@@ -1,0 +1,247 @@
+---
+title: 'mset'
+description: 'Set multiple keys to multiple values'
+---
+
+## Description
+
+Sets the given keys to their respective values. MSET replaces existing values with new values, just as regular SET. MSET is atomic, so all given keys are set at once. It is not possible for clients to see that some of the keys were updated while others are unchanged.
+
+## Syntax
+
+```typescript
+redis.mset<TData>(kv: Record<string, TData>): Promise<"OK">
+```
+
+## Parameters
+
+<ParamField path="kv" type="Record<string, TData>" required>
+  An object where keys are Redis keys and values are the values to set
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="TData" type="type">
+  The type of values being stored. All values in the object should be of the same type.
+</ParamField>
+
+## Returns
+
+<ResponseField name="result" type="'OK'">
+  Always returns `"OK"` when the operation succeeds
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set multiple string values
+const result = await redis.mset({
+  key1: 'value1',
+  key2: 'value2',
+  key3: 'value3'
+});
+
+console.log(result); // "OK"
+
+// Verify the values were set
+const values = await redis.mget('key1', 'key2', 'key3');
+console.log(values); // ["value1", "value2", "value3"]
+```
+
+### Setting User Profile Data
+
+```typescript
+// Set multiple user fields at once
+await redis.mset({
+  'user:123:name': 'Alice',
+  'user:123:email': 'alice@example.com',
+  'user:123:age': '30',
+  'user:123:role': 'admin'
+});
+
+// Fetch user data
+const [name, email, age, role] = await redis.mget(
+  'user:123:name',
+  'user:123:email',
+  'user:123:age',
+  'user:123:role'
+);
+
+console.log({ name, email, age, role });
+```
+
+### Storing Objects
+
+```typescript
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+}
+
+const products: Product[] = [
+  { id: 'p1', name: 'Widget', price: 19.99 },
+  { id: 'p2', name: 'Gadget', price: 29.99 },
+  { id: 'p3', name: 'Doohickey', price: 39.99 }
+];
+
+// Create a key-value object from products array
+const productData = products.reduce((acc, product) => {
+  acc[`product:${product.id}`] = product;
+  return acc;
+}, {} as Record<string, Product>);
+
+// Set all products at once
+await redis.mset(productData);
+
+// Retrieve a product
+const widget = await redis.get<Product>('product:p1');
+console.log(widget); // { id: "p1", name: "Widget", price: 19.99 }
+```
+
+### Configuration Initialization
+
+```typescript
+// Initialize application configuration
+await redis.mset({
+  'config:api_url': 'https://api.example.com',
+  'config:api_key': 'secret-key-123',
+  'config:timeout': '5000',
+  'config:max_retries': '3',
+  'config:debug_mode': 'false'
+});
+
+// Later, fetch all config
+const config = await redis.mget(
+  'config:api_url',
+  'config:api_key',
+  'config:timeout',
+  'config:max_retries',
+  'config:debug_mode'
+);
+```
+
+### Updating Multiple Counters
+
+```typescript
+// Initialize multiple counters
+await redis.mset({
+  'stats:page_views': '0',
+  'stats:unique_visitors': '0',
+  'stats:api_calls': '0',
+  'stats:errors': '0'
+});
+
+// Later increment them individually
+await redis.incr('stats:page_views');
+await redis.incr('stats:unique_visitors');
+```
+
+### Session Data
+
+```typescript
+interface SessionData {
+  userId: string;
+  loginTime: string;
+  lastActivity: string;
+  ipAddress: string;
+}
+
+const sessionId = 'sess_abc123';
+const sessionData: SessionData = {
+  userId: 'user_456',
+  loginTime: new Date().toISOString(),
+  lastActivity: new Date().toISOString(),
+  ipAddress: '192.168.1.1'
+};
+
+// Store session fields
+await redis.mset({
+  [`session:${sessionId}:userId`]: sessionData.userId,
+  [`session:${sessionId}:loginTime`]: sessionData.loginTime,
+  [`session:${sessionId}:lastActivity`]: sessionData.lastActivity,
+  [`session:${sessionId}:ipAddress`]: sessionData.ipAddress
+});
+```
+
+### Batch Cache Population
+
+```typescript
+// Populate cache with multiple entries
+async function populateCache(items: Map<string, any>) {
+  const cacheData: Record<string, any> = {};
+  
+  items.forEach((value, key) => {
+    cacheData[`cache:${key}`] = value;
+  });
+  
+  await redis.mset(cacheData);
+  console.log(`Cached ${items.size} items`);
+}
+
+const dataToCache = new Map([
+  ['user:1', { name: 'Alice', age: 30 }],
+  ['user:2', { name: 'Bob', age: 25 }],
+  ['user:3', { name: 'Charlie', age: 35 }]
+]);
+
+await populateCache(dataToCache);
+```
+
+### Feature Flags
+
+```typescript
+// Set multiple feature flags atomically
+await redis.mset({
+  'feature:new_ui': 'true',
+  'feature:beta_features': 'false',
+  'feature:dark_mode': 'true',
+  'feature:analytics': 'true'
+});
+
+// Check feature flags
+const [newUI, betaFeatures, darkMode] = await redis.mget(
+  'feature:new_ui',
+  'feature:beta_features',
+  'feature:dark_mode'
+);
+
+const features = {
+  newUI: newUI === 'true',
+  betaFeatures: betaFeatures === 'true',
+  darkMode: darkMode === 'true'
+};
+```
+
+## Performance Considerations
+
+- MSET is more efficient than multiple SET commands because it reduces network round trips
+- The operation is atomic - all keys are set simultaneously
+- For setting many keys, MSET significantly reduces latency compared to sequential SET calls
+- Time complexity is O(N) where N is the number of keys to set
+
+## Notes
+
+- MSET is atomic - all keys are set at once
+- Existing values are overwritten
+- Always returns `"OK"` on success
+- More efficient than multiple SET operations due to reduced network overhead
+- All values in the object are serialized according to the SDK's serialization settings
+
+## Related Commands
+
+- [set](/api/commands/set) - Set the value of a single key
+- [mget](/api/commands/mget) - Get the values of multiple keys
+
+## Redis Documentation
+
+For more information, see the [Redis MSET documentation](https://redis.io/commands/mset).

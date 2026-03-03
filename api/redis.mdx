@@ -1,0 +1,447 @@
+---
+title: Redis
+description: Main Redis client class for interacting with Upstash Redis
+---
+
+The `Redis` class is the main entry point for interacting with Upstash Redis. It provides methods for all Redis commands and supports both direct instantiation and environment-based configuration.
+
+## Constructor
+
+### With Configuration Object
+
+Create a new Redis client by providing connection credentials.
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: '<UPSTASH_REDIS_REST_URL>',
+  token: '<UPSTASH_REDIS_REST_TOKEN>'
+});
+```
+
+<ParamField path="config" type="RedisConfigNodejs" required>
+  Configuration object for the Redis client
+  
+  <Expandable title="properties">
+    <ParamField path="url" type="string" required>
+      UPSTASH_REDIS_REST_URL - Get it from your [Upstash Console](https://console.upstash.com/redis)
+    </ParamField>
+    
+    <ParamField path="token" type="string" required>
+      UPSTASH_REDIS_REST_TOKEN - Get it from your [Upstash Console](https://console.upstash.com/redis)
+    </ParamField>
+    
+    <ParamField path="automaticDeserialization" type="boolean" default="true">
+      Automatically deserialize returned data using `JSON.parse`
+    </ParamField>
+    
+    <ParamField path="enableTelemetry" type="boolean" default="true">
+      Enable telemetry data collection. Can be disabled by setting `UPSTASH_DISABLE_TELEMETRY` environment variable
+    </ParamField>
+    
+    <ParamField path="enableAutoPipelining" type="boolean" default="true">
+      Enable automatic pipelining of commands for better performance
+    </ParamField>
+    
+    <ParamField path="latencyLogging" type="boolean" default="false">
+      Enable latency logging for commands
+    </ParamField>
+    
+    <ParamField path="readYourWrites" type="boolean" default="true">
+      When enabled, subsequent commands are guaranteed to observe effects of all earlier writes submitted by the same client
+    </ParamField>
+    
+    <ParamField path="retry" type="RetryConfig" default="5 retries with exponential backoff">
+      Configure retry behavior for network errors
+      
+      <Expandable title="properties">
+        <ParamField path="retries" type="number" default="5">
+          Number of retries to attempt before giving up
+        </ParamField>
+        
+        <ParamField path="backoff" type="(retryCount: number) => number">
+          Backoff function that returns milliseconds to wait before retrying. Default: `Math.exp(retryCount) * 50`
+        </ParamField>
+      </Expandable>
+    </ParamField>
+    
+    <ParamField path="responseEncoding" type="false | 'base64'" default="'base64'">
+      Encode responses as base64 before sending. Disable if you're sure your data is valid UTF-8
+    </ParamField>
+    
+    <ParamField path="cache" type="'default' | 'force-cache' | 'no-cache' | 'no-store' | 'only-if-cached' | 'reload'" default="'no-store'">
+      Configure cache behavior for requests
+    </ParamField>
+    
+    <ParamField path="signal" type="AbortSignal">
+      AbortSignal to cancel requests. See [MDN AbortSignal](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal)
+    </ParamField>
+    
+    <ParamField path="agent" type="http.Agent | https.Agent">
+      HTTP(S) agent for connection pooling (Node.js only). Not supported in edge runtimes
+      
+      ```typescript
+      import https from 'https';
+      
+      const redis = new Redis({
+        url: process.env.UPSTASH_REDIS_REST_URL,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN,
+        agent: new https.Agent({ keepAlive: true })
+      });
+      ```
+    </ParamField>
+    
+    <ParamField path="keepAlive" type="boolean" default="true">
+      Enable HTTP keep-alive for connection reuse
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### With Custom Requester
+
+Create a Redis client with a custom HTTP requester implementation.
+
+```typescript
+import { Redis, Requester, UpstashRequest, UpstashResponse } from '@upstash/redis';
+
+const customRequester: Requester = {
+  request: async <TResult>(req: UpstashRequest): Promise<UpstashResponse<TResult>> => {
+    // Custom request implementation
+    // ...
+  }
+};
+
+const redis = new Redis(customRequester);
+```
+
+<ParamField path="requester" type="Requester" required>
+  Custom requester implementation
+  
+  <Expandable title="properties">
+    <ParamField path="request" type="<TResult>(req: UpstashRequest) => Promise<UpstashResponse<TResult>>" required>
+      Function that handles HTTP requests to Upstash Redis REST API
+    </ParamField>
+    
+    <ParamField path="readYourWrites" type="boolean">
+      Enable read-your-writes consistency
+    </ParamField>
+    
+    <ParamField path="upstashSyncToken" type="string">
+      Sync token for maintaining consistency
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Static Methods
+
+### fromEnv()
+
+Create a Redis instance from environment variables.
+
+```typescript
+const redis = Redis.fromEnv();
+```
+
+This method automatically loads connection credentials from:
+- `UPSTASH_REDIS_REST_URL` or `KV_REST_API_URL` (fallback for Vercel KV)
+- `UPSTASH_REDIS_REST_TOKEN` or `KV_REST_API_TOKEN` (fallback for Vercel KV)
+
+<ParamField path="config" type="Omit<RedisConfigNodejs, 'url' | 'token'>">
+  Optional configuration (all options except `url` and `token`)
+</ParamField>
+
+<ResponseField name="redis" type="Redis">
+  A configured Redis instance
+</ResponseField>
+
+```typescript
+const redis = Redis.fromEnv({
+  enableAutoPipelining: false,
+  latencyLogging: true
+});
+```
+
+## Properties
+
+### readYourWritesSyncToken
+
+Get or set the sync token for read-your-writes consistency.
+
+```typescript
+// Get current sync token
+const token = redis.readYourWritesSyncToken;
+
+// Set sync token
+redis.readYourWritesSyncToken = 'your-sync-token';
+```
+
+<ResponseField name="readYourWritesSyncToken" type="string | undefined">
+  The current sync token
+</ResponseField>
+
+## Instance Methods
+
+### pipeline()
+
+Create a new pipeline to batch multiple commands.
+
+```typescript
+const pipeline = redis.pipeline();
+pipeline.set('key1', 'value1');
+pipeline.set('key2', 'value2');
+pipeline.get('key1');
+
+const results = await pipeline.exec();
+// results: ['OK', 'OK', 'value1']
+```
+
+<ResponseField name="pipeline" type="Pipeline">
+  A new Pipeline instance for batching commands
+</ResponseField>
+
+See [Pipeline](/api/pipeline) for full documentation.
+
+### multi()
+
+Create a transaction (MULTI/EXEC) to execute commands atomically.
+
+```typescript
+const transaction = redis.multi();
+transaction.set('key1', 'value1');
+transaction.set('key2', 'value2');
+transaction.get('key1');
+
+const results = await transaction.exec();
+// All commands executed atomically
+```
+
+<ResponseField name="multi" type="Pipeline">
+  A new Pipeline instance configured for atomic execution
+</ResponseField>
+
+### createScript()
+
+Create a Lua script that can be executed efficiently using EVALSHA.
+
+```typescript
+const script = redis.createScript<string>(
+  'return ARGV[1];'
+);
+
+const result = await script.eval([], ['Hello World']);
+// result: 'Hello World'
+```
+
+<ParamField path="script" type="string" required>
+  The Lua script to execute
+</ParamField>
+
+<ParamField path="opts" type="{ readonly?: boolean }">
+  Script options
+  
+  <Expandable title="properties">
+    <ParamField path="readonly" type="boolean" default="false">
+      If true, returns a ScriptRO instance that uses EVALSHA_RO/EVAL_RO
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="script" type="Script<TResult> | ScriptRO<TResult>">
+  A Script or ScriptRO instance depending on the readonly option
+</ResponseField>
+
+See [Script](/api/script) for full documentation.
+
+### use()
+
+Wrap middleware around the HTTP client for custom request/response handling.
+
+```typescript
+redis.use(async (request, next) => {
+  console.log('Making request:', request);
+  const response = await next(request);
+  console.log('Received response:', response);
+  return response;
+});
+```
+
+<ParamField path="middleware" type="(request: UpstashRequest, next: (req: UpstashRequest) => Promise<UpstashResponse<TResult>>) => Promise<UpstashResponse<TResult>>" required>
+  Middleware function to wrap around requests
+</ParamField>
+
+## Command Methods
+
+The Redis class provides methods for all Redis commands. Here are some commonly used examples:
+
+### String Commands
+
+```typescript
+// SET
+await redis.set('key', 'value');
+await redis.set('key', 'value', { ex: 60 }); // with expiration
+
+// GET
+const value = await redis.get('key');
+
+// MGET
+const values = await redis.mget('key1', 'key2', 'key3');
+
+// MSET
+await redis.mset({ key1: 'value1', key2: 'value2' });
+
+// INCR
+await redis.incr('counter');
+
+// INCRBY
+await redis.incrby('counter', 5);
+```
+
+### Hash Commands
+
+```typescript
+// HSET
+await redis.hset('user:1', { name: 'John', age: 30 });
+
+// HGET
+const name = await redis.hget('user:1', 'name');
+
+// HGETALL
+const user = await redis.hgetall('user:1');
+
+// HMGET
+const [name, age] = await redis.hmget('user:1', 'name', 'age');
+```
+
+### List Commands
+
+```typescript
+// LPUSH
+await redis.lpush('list', 'item1', 'item2');
+
+// RPUSH
+await redis.rpush('list', 'item3');
+
+// LRANGE
+const items = await redis.lrange('list', 0, -1);
+
+// LPOP
+const item = await redis.lpop('list');
+```
+
+### Set Commands
+
+```typescript
+// SADD
+await redis.sadd('set', 'member1', 'member2');
+
+// SMEMBERS
+const members = await redis.smembers('set');
+
+// SISMEMBER
+const isMember = await redis.sismember('set', 'member1');
+```
+
+### Sorted Set Commands
+
+```typescript
+// ZADD
+await redis.zadd('leaderboard', { score: 100, member: 'player1' });
+
+// ZRANGE
+const topPlayers = await redis.zrange('leaderboard', 0, 9);
+
+// ZRANK
+const rank = await redis.zrank('leaderboard', 'player1');
+```
+
+### JSON Commands
+
+```typescript
+// JSON.SET
+await redis.json.set('user:1', '$', { name: 'John', age: 30 });
+
+// JSON.GET
+const user = await redis.json.get('user:1', '$');
+
+// JSON.NUMINCRBY
+await redis.json.numincrby('user:1', '$.age', 1);
+```
+
+### Key Management
+
+```typescript
+// DEL
+await redis.del('key');
+
+// EXISTS
+const exists = await redis.exists('key');
+
+// EXPIRE
+await redis.expire('key', 60);
+
+// TTL
+const ttl = await redis.ttl('key');
+
+// KEYS (use with caution in production)
+const keys = await redis.keys('user:*');
+```
+
+## Complete Example
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+// Initialize client
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Or use fromEnv
+const redis = Redis.fromEnv();
+
+// Simple operations
+await redis.set('greeting', 'Hello, World!');
+const greeting = await redis.get('greeting');
+
+// Pipelining
+const pipeline = redis.pipeline();
+pipeline.set('user:1', { name: 'Alice' });
+pipeline.set('user:2', { name: 'Bob' });
+pipeline.get('user:1');
+const results = await pipeline.exec();
+
+// Transactions
+const transaction = redis.multi();
+transaction.set('balance', 100);
+transaction.incrby('balance', 50);
+transaction.get('balance');
+const [setResult, incrResult, balance] = await transaction.exec();
+
+// Scripts
+const myScript = redis.createScript<number>(
+  'return redis.call("INCR", KEYS[1])'
+);
+const counter = await myScript.exec(['mycounter'], []);
+```
+
+## TypeScript Support
+
+The Redis client is fully typed with TypeScript generics:
+
+```typescript
+interface User {
+  name: string;
+  age: number;
+}
+
+// Type-safe operations
+await redis.set<User>('user:1', { name: 'John', age: 30 });
+const user = await redis.get<User>('user:1');
+// user is typed as User | null
+
+// JSON operations
+await redis.json.set('user:2', '$', { name: 'Jane', age: 25 });
+const userData = await redis.json.get<User>('user:2');
+```

@@ -1,0 +1,183 @@
+---
+title: EVAL
+description: Execute a Lua script on the Redis server
+---
+
+## Usage
+
+```typescript
+await redis.eval(script, keys, args);
+```
+
+Executes a Lua script on the Redis server. The script can access keys and arguments passed to it.
+
+## Parameters
+
+<ParamField path="script" type="string" required>
+  The Lua script to execute.
+</ParamField>
+
+<ParamField path="keys" type="string[]" required>
+  Array of key names that the script will access. These are available in the script as `KEYS[1]`, `KEYS[2]`, etc.
+</ParamField>
+
+<ParamField path="args" type="unknown[]">
+  Array of arguments to pass to the script. These are available in the script as `ARGV[1]`, `ARGV[2]`, etc.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="unknown">
+  The value returned by the Lua script. The type depends on what the script returns.
+</ResponseField>
+
+## Examples
+
+### Basic Script Execution
+
+```typescript
+const result = await redis.eval(
+  "return ARGV[1]",
+  [],
+  ["Hello World"]
+);
+console.log(result); // "Hello World"
+```
+
+### Incrementing a Counter
+
+```typescript
+const script = `
+  local current = redis.call('GET', KEYS[1])
+  if current == false then
+    current = 0
+  end
+  local next = current + tonumber(ARGV[1])
+  redis.call('SET', KEYS[1], next)
+  return next
+`;
+
+const newValue = await redis.eval(
+  script,
+  ["counter"],
+  ["5"]
+);
+console.log(newValue); // 5 (or current value + 5)
+```
+
+### Conditional Set
+
+```typescript
+const script = `
+  local current = redis.call('GET', KEYS[1])
+  if current == ARGV[1] then
+    redis.call('SET', KEYS[1], ARGV[2])
+    return 1
+  else
+    return 0
+  end
+`;
+
+const updated = await redis.eval(
+  script,
+  ["mykey"],
+  ["oldvalue", "newvalue"]
+);
+console.log(updated); // 1 if updated, 0 if not
+```
+
+### Working with Multiple Keys
+
+```typescript
+const script = `
+  local val1 = redis.call('GET', KEYS[1])
+  local val2 = redis.call('GET', KEYS[2])
+  return {val1, val2}
+`;
+
+const values = await redis.eval(
+  script,
+  ["key1", "key2"],
+  []
+);
+console.log(values); // [value1, value2]
+```
+
+## EVAL vs EVAL_RO
+
+### EVAL
+
+The `eval` command can execute scripts that modify data:
+
+```typescript
+const script = `
+  redis.call('SET', KEYS[1], ARGV[1])
+  return 'OK'
+`;
+
+const result = await redis.eval(
+  script,
+  ["mykey"],
+  ["myvalue"]
+);
+```
+
+### EVAL_RO (Read-Only)
+
+Use `evalRo` for read-only scripts that don't modify data. This is more efficient for read replicas:
+
+```typescript
+const script = `
+  return redis.call('GET', KEYS[1])
+`;
+
+const result = await redis.evalRo(
+  script,
+  ["mykey"],
+  []
+);
+```
+
+Read-only scripts:
+- Can be executed on read replicas
+- Are optimized for read-heavy workloads
+- Will error if they attempt to modify data
+
+## Using the Script Class
+
+For better performance with frequently used scripts, use the `Script` class which automatically handles SHA-1 caching:
+
+```typescript
+const script = redis.createScript<number>(`
+  local current = redis.call('GET', KEYS[1]) or 0
+  local next = current + tonumber(ARGV[1])
+  redis.call('SET', KEYS[1], next)
+  return next
+`);
+
+// First call uses EVAL, subsequent calls use EVALSHA
+const result1 = await script.exec(["counter"], ["1"]);
+const result2 = await script.exec(["counter"], ["1"]);
+```
+
+The `Script` class provides three methods:
+- `eval(keys, args)` - Always uses EVAL
+- `evalsha(keys, args)` - Always uses EVALSHA (requires script to be loaded)
+- `exec(keys, args)` - Optimistically tries EVALSHA, falls back to EVAL if needed
+
+For read-only scripts, use `createScript` with the `readOnly` option:
+
+```typescript
+const script = redis.createScript<string>(
+  "return redis.call('GET', KEYS[1])",
+  { readOnly: true }
+);
+
+const result = await script.exec(["mykey"], []);
+```
+
+## See Also
+
+- [EVALSHA](/api/commands/evalsha) - Execute a cached script by SHA-1 hash
+- [SCRIPT LOAD](/api/commands/script-load) - Load a script into the server cache
+- [FCALL](/api/commands/fcall) - Call a Redis function

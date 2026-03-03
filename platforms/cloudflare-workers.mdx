@@ -1,0 +1,250 @@
+---
+title: Cloudflare Workers
+description: Use Upstash Redis SDK in Cloudflare Workers
+---
+
+The Upstash Redis SDK is optimized for Cloudflare Workers with a dedicated platform-specific build.
+
+## Installation
+
+```bash
+npm install @upstash/redis
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Import from the Cloudflare-specific path">
+    ```typescript
+    import { Redis } from "@upstash/redis/cloudflare";
+    ```
+
+    <Note>
+      Always use `@upstash/redis/cloudflare` when deploying to Cloudflare Workers. The default import is optimized for Node.js and may not work correctly.
+    </Note>
+  </Step>
+
+  <Step title="Define your environment interface">
+    ```typescript
+    export interface Env {
+      UPSTASH_REDIS_REST_URL: string;
+      UPSTASH_REDIS_REST_TOKEN: string;
+    }
+    ```
+  </Step>
+
+  <Step title="Use Redis in your worker">
+    <Tabs>
+      <Tab title="Module Worker (Recommended)">
+        ```typescript
+        import { Redis } from "@upstash/redis/cloudflare";
+
+        export interface Env {
+          UPSTASH_REDIS_REST_URL: string;
+          UPSTASH_REDIS_REST_TOKEN: string;
+        }
+
+        export default {
+          async fetch(_request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+            // Pass the env object to fromEnv()
+            const redis = Redis.fromEnv(env);
+
+            const count = await redis.incr("cloudflare-workers-count");
+
+            return new Response(JSON.stringify({ count }));
+          },
+        };
+        ```
+      </Tab>
+
+      <Tab title="Service Worker">
+        ```typescript
+        import { Redis } from "@upstash/redis/cloudflare";
+
+        export default {
+          async fetch(_request, env) {
+            const redis = Redis.fromEnv(env);
+
+            const count = await redis.incr("cloudflare-workers-count");
+
+            return new Response(JSON.stringify({ count }));
+          },
+        };
+        ```
+      </Tab>
+
+      <Tab title="With Direct Credentials">
+        ```typescript
+        import { Redis } from "@upstash/redis/cloudflare";
+
+        export default {
+          async fetch(_request: Request, env: Env): Promise<Response> {
+            const redis = new Redis({
+              url: env.UPSTASH_REDIS_REST_URL,
+              token: env.UPSTASH_REDIS_REST_TOKEN,
+            });
+
+            const count = await redis.incr("counter");
+
+            return new Response(JSON.stringify({ count }));
+          },
+        };
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Configuration Options
+
+```typescript
+const redis = new Redis({
+  url: env.UPSTASH_REDIS_REST_URL,
+  token: env.UPSTASH_REDIS_REST_TOKEN,
+  
+  // Enable keep-alive connections
+  keepAlive: true,
+  
+  // Abort requests using AbortSignal
+  signal: abortController.signal,
+  
+  // Read-your-writes consistency
+  readYourWrites: true,
+  
+  // Automatic deserialization of JSON values
+  automaticDeserialization: true,
+  
+  // Enable telemetry (default: true)
+  enableTelemetry: true,
+  
+  // Configure retry behavior
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 50,
+  },
+  
+  // Response encoding
+  responseEncoding: "base64",
+});
+```
+
+### Using fromEnv() with Options
+
+```typescript
+const redis = Redis.fromEnv(env, {
+  keepAlive: true,
+  automaticDeserialization: true,
+});
+```
+
+## Environment Variables
+
+<Steps>
+  <Step title="Add secrets using Wrangler CLI">
+    ```bash
+    wrangler secret put UPSTASH_REDIS_REST_URL
+    wrangler secret put UPSTASH_REDIS_REST_TOKEN
+    ```
+  </Step>
+
+  <Step title="Or configure in wrangler.toml (for development)">
+    ```toml
+    name = "my-worker"
+    main = "src/index.ts"
+    compatibility_date = "2023-01-01"
+
+    [vars]
+    UPSTASH_REDIS_REST_URL = "https://your-redis-url.upstash.io"
+    UPSTASH_REDIS_REST_TOKEN = "your-token-here"
+    ```
+
+    <Warning>
+      Do not commit secrets to `wrangler.toml`. Use Wrangler secrets for production.
+    </Warning>
+  </Step>
+</Steps>
+
+## Environment Binding
+
+Cloudflare Workers can bind environment variables in two ways:
+
+### 1. Module Workers (Recommended)
+
+Pass the `env` object to `Redis.fromEnv()`:
+
+```typescript
+export default {
+  async fetch(_request: Request, env: Env, _ctx: ExecutionContext) {
+    const redis = Redis.fromEnv(env);
+    // ...
+  },
+};
+```
+
+### 2. Global Variables
+
+If you don't pass the `env` object, the SDK will attempt to read from global variables:
+
+```typescript
+// Only works if UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN
+// are available as global variables
+const redis = Redis.fromEnv();
+```
+
+<Note>
+  Module workers with explicit `env` passing is the recommended approach for better type safety and clarity.
+</Note>
+
+## Complete Example
+
+```typescript
+import { Redis } from "@upstash/redis/cloudflare";
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+
+    // Increment counter
+    const count = await redis.incr("page-views");
+
+    // Set a value with expiration
+    await redis.set("last-visit", new Date().toISOString(), { ex: 60 });
+
+    // Get a value
+    const lastVisit = await redis.get("last-visit");
+
+    return new Response(
+      JSON.stringify({
+        count,
+        lastVisit,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  },
+};
+```
+
+## Telemetry
+
+The SDK automatically reports `"cloudflare"` as the platform in telemetry data. To disable telemetry:
+
+```typescript
+const redis = Redis.fromEnv(env, {
+  enableTelemetry: false,
+});
+```
+
+Or set the `UPSTASH_DISABLE_TELEMETRY` environment variable in your `env` object.
+
+## Related
+
+- [Cloudflare Workers Example](https://github.com/upstash/redis-js/tree/main/examples/cloudflare-workers) - Complete example on GitHub
+- [Cloudflare Workers TypeScript Example](https://github.com/upstash/redis-js/tree/main/examples/cloudflare-workers-with-typescript) - TypeScript example
+- [Configuration](/concepts/client-configuration) - Complete configuration reference

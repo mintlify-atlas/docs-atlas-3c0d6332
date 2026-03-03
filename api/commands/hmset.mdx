@@ -1,0 +1,188 @@
+---
+title: 'HMSET'
+description: 'Set multiple hash fields (legacy)'
+---
+
+## Usage
+
+Sets the specified fields to their respective values in the hash stored at `key`. This command overwrites any specified fields already existing in the hash.
+
+```typescript
+await redis.hmset(key, fieldValueObject);
+```
+
+<Note>
+  As of Redis 4.0.0, `HMSET` is considered deprecated. Use `HSET` with multiple field-value pairs instead, which has the same behavior.
+</Note>
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+<ParamField path="fieldValueObject" type="Record<string, TData>" required>
+  An object containing field-value pairs to set in the hash. Each key in the object represents a field name, and its value is the value to set.
+</ParamField>
+
+## Response
+
+<ResponseField name="status" type="'OK'">
+  Always returns `'OK'` when successful.
+</ResponseField>
+
+## Examples
+
+### Set multiple fields
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set multiple fields at once
+const result = await redis.hmset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  age: 30,
+  city: 'New York'
+});
+console.log(result); // 'OK'
+```
+
+### Update existing fields
+
+```typescript
+// Set initial data
+await redis.hmset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com'
+});
+
+// Update fields (overwrites existing)
+await redis.hmset('user:1000', {
+  email: 'alice.new@example.com',
+  city: 'Boston'
+});
+
+const user = await redis.hgetall('user:1000');
+console.log(user);
+// { name: 'Alice', email: 'alice.new@example.com', city: 'Boston' }
+```
+
+### Initialize configuration
+
+```typescript
+// Set application configuration
+await redis.hmset('config:app', {
+  maxConnections: 100,
+  timeout: 5000,
+  retryAttempts: 3,
+  enableCache: true
+});
+```
+
+### Store session data
+
+```typescript
+interface SessionData {
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  ipAddress: string;
+}
+
+const sessionData: SessionData = {
+  userId: '1000',
+  createdAt: new Date().toISOString(),
+  expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  ipAddress: '192.168.1.1'
+};
+
+await redis.hmset('session:abc123', sessionData);
+```
+
+### Migrate from HMSET to HSET
+
+```typescript
+// Old way (HMSET - deprecated)
+await redis.hmset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com'
+});
+
+// New way (HSET - recommended)
+await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com'
+});
+
+// Both produce the same result
+```
+
+### Bulk insert user data
+
+```typescript
+const users = [
+  { id: '1000', name: 'Alice', email: 'alice@example.com' },
+  { id: '2000', name: 'Bob', email: 'bob@example.com' },
+  { id: '3000', name: 'Charlie', email: 'charlie@example.com' }
+];
+
+// Insert all users
+await Promise.all(
+  users.map(user => 
+    redis.hmset(`user:${user.id}`, {
+      name: user.name,
+      email: user.email
+    })
+  )
+);
+```
+
+### Set default values
+
+```typescript
+// Set default user preferences
+await redis.hmset('user:1000:preferences', {
+  theme: 'light',
+  language: 'en',
+  notifications: true,
+  emailDigest: 'daily'
+});
+```
+
+## Notes
+
+- Always returns `'OK'` on success (unlike `HSET` which returns the count)
+- As of Redis 4.0.0, this command is deprecated in favor of `HSET`
+- `HSET` can accept multiple field-value pairs and has the same behavior as `HMSET`
+- The command overwrites existing fields
+- If the key does not exist, a new hash is created
+- Consider using `HSET` for new implementations
+
+## Migration Guide
+
+Replace `HMSET` with `HSET` in your code:
+
+```typescript
+// Before
+await redis.hmset('key', { field1: 'value1', field2: 'value2' });
+
+// After
+await redis.hset('key', { field1: 'value1', field2: 'value2' });
+```
+
+The main difference is the return value:
+- `HMSET` returns `'OK'`
+- `HSET` returns the number of fields added/updated
+
+## See Also
+
+- [HSET](/api/commands/hset) - Set hash field values (recommended)
+- [HGET](/api/commands/hget) - Get a hash field value
+- [HMGET](/api/commands/hmget) - Get multiple hash field values
+- [HGETALL](/api/commands/hgetall) - Get all fields and values in a hash

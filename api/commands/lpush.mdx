@@ -1,0 +1,89 @@
+---
+title: 'LPUSH'
+description: 'Insert elements at the head of a list'
+---
+
+## Overview
+
+Inserts one or more values at the head of the list stored at `key`. If `key` does not exist, it is created as an empty list before performing the push operations.
+
+## Method Signature
+
+```typescript
+lpush<TData>(key: string, ...elements: TData[]): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the list.
+</ParamField>
+
+<ParamField path="elements" type="TData[]" required>
+  One or more elements to insert at the head of the list. Elements are inserted one after the other, so the first element in the arguments will be the first element of the list.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="length" type="number">
+  The length of the list after the push operations.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Push a single element
+const length1 = await redis.lpush('mylist', 'world');
+console.log(length1); // 1
+
+// Push multiple elements
+const length2 = await redis.lpush('mylist', 'hello', 'hi');
+console.log(length2); // 3
+// List is now: ['hi', 'hello', 'world']
+```
+
+### Working with Objects
+
+```typescript
+interface Task {
+  id: string;
+  title: string;
+  priority: number;
+}
+
+const task: Task = {
+  id: '123',
+  title: 'Complete documentation',
+  priority: 1,
+};
+
+const length = await redis.lpush<Task>('tasks', task);
+console.log(length); // 1
+```
+
+### Building a Queue
+
+```typescript
+// Add new items to the head of the queue
+await redis.lpush('queue:jobs', 'job-1');
+await redis.lpush('queue:jobs', 'job-2');
+await redis.lpush('queue:jobs', 'job-3');
+
+// Queue is now: ['job-3', 'job-2', 'job-1']
+```
+
+## See Also
+
+- [RPUSH](/api/commands/rpush) - Insert elements at the tail of a list
+- [LPOP](/api/commands/lpop) - Remove and return the first element of a list
+- [LRANGE](/api/commands/lrange) - Get a range of elements from a list
+- [LLEN](/api/commands/llen) - Get the length of a list

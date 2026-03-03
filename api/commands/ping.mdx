@@ -1,0 +1,84 @@
+---
+title: ping
+description: Test server connection
+---
+
+## Description
+
+Returns `PONG` if no argument is provided, otherwise returns a copy of the argument as a bulk string. This command is useful for testing if a connection is still alive, or measuring latency.
+
+## Method Signature
+
+```typescript
+ping(message?: string): Promise<string | "PONG">
+```
+
+## Parameters
+
+<ParamField path="message" type="string">
+  Optional message to echo back. If not provided, returns `"PONG"`.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="string | 'PONG'">
+  - `"PONG"` if no message is provided
+  - The provided message if one was given
+</ResponseField>
+
+## Examples
+
+### Basic ping
+
+```typescript
+const response = await redis.ping();
+console.log(response); // "PONG"
+```
+
+### Ping with message
+
+```typescript
+const response = await redis.ping("Hello Redis!");
+console.log(response); // "Hello Redis!"
+```
+
+### Test connection
+
+```typescript
+try {
+  await redis.ping();
+  console.log("Connection is alive");
+} catch (error) {
+  console.error("Connection failed:", error);
+}
+```
+
+### Measure latency
+
+```typescript
+const start = Date.now();
+await redis.ping();
+const latency = Date.now() - start;
+console.log(`Latency: ${latency}ms`);
+```
+
+### Health check
+
+```typescript
+async function healthCheck() {
+  try {
+    const response = await redis.ping();
+    return response === "PONG";
+  } catch {
+    return false;
+  }
+}
+
+const isHealthy = await healthCheck();
+console.log(`Server is ${isHealthy ? "healthy" : "down"}`);
+```
+
+## See Also
+
+- [echo](/api/commands/echo) - Echo a message
+- [time](/api/commands/time) - Get server time

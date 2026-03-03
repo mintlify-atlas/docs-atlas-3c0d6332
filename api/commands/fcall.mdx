@@ -1,0 +1,241 @@
+---
+title: FCALL
+description: Call a Redis function by name
+---
+
+## Usage
+
+```typescript
+await redis.fcall(functionName, keys, args);
+```
+
+Invokes a Redis function that has been loaded into the server. Redis functions are similar to Lua scripts but offer better organization, reusability, and management capabilities.
+
+## Parameters
+
+<ParamField path="functionName" type="string" required>
+  The name of the function to call. The function must be loaded on the server.
+</ParamField>
+
+<ParamField path="keys" type="string[]">
+  Array of key names that the function will access. These are available in the function as `KEYS[1]`, `KEYS[2]`, etc.
+</ParamField>
+
+<ParamField path="args" type="string[]">
+  Array of arguments to pass to the function. These are available in the function as `ARGV[1]`, `ARGV[2]`, etc.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="unknown">
+  The value returned by the Redis function. The type depends on what the function returns.
+</ResponseField>
+
+## Examples
+
+### Calling a Simple Function
+
+```typescript
+// Assume a function "hello" is loaded that returns a greeting
+const result = await redis.fcall(
+  "hello",
+  [],
+  ["World"]
+);
+console.log(result); // "Hello, World!"
+```
+
+### Counter Function
+
+```typescript
+// Assume a function "increment_counter" is loaded
+const newValue = await redis.fcall(
+  "increment_counter",
+  ["my_counter"],
+  ["5"]
+);
+console.log(newValue); // Current value + 5
+```
+
+### Working with Multiple Keys
+
+```typescript
+// Assume a function "sum_values" is loaded that sums multiple keys
+const total = await redis.fcall(
+  "sum_values",
+  ["value1", "value2", "value3"],
+  []
+);
+console.log(total);
+```
+
+### Passing Arguments
+
+```typescript
+// Assume a function "set_with_metadata" is loaded
+const result = await redis.fcall(
+  "set_with_metadata",
+  ["user:123"],
+  [
+    "John Doe",
+    "john@example.com",
+    new Date().toISOString()
+  ]
+);
+```
+
+### No Keys or Arguments
+
+```typescript
+// Call a function with no keys or arguments
+const result = await redis.fcall(
+  "get_server_time",
+  [],
+  []
+);
+
+// Or omit the optional parameters
+const result2 = await redis.fcall("get_server_time");
+```
+
+## FCALL vs FCALL_RO
+
+### FCALL
+
+The `fcall` command can execute functions that modify data:
+
+```typescript
+const result = await redis.fcall(
+  "update_user",
+  ["user:123"],
+  ["new_name", "new_email"]
+);
+```
+
+### FCALL_RO (Read-Only)
+
+Use `fcallRo` for read-only functions that don't modify data:
+
+```typescript
+const result = await redis.fcallRo(
+  "get_user",
+  ["user:123"],
+  []
+);
+```
+
+Read-only functions:
+- Can be executed on read replicas
+- Are optimized for read-heavy workloads
+- Will error if they attempt to modify data
+- Provide better performance in distributed setups
+
+### Example: Choosing the Right Command
+
+```typescript
+// Use fcall for writes
+const updated = await redis.fcall(
+  "increment_counter",
+  ["page_views"],
+  ["1"]
+);
+
+// Use fcallRo for reads
+const current = await redis.fcallRo(
+  "get_counter",
+  ["page_views"],
+  []
+);
+```
+
+## Redis Functions vs Lua Scripts
+
+### Functions (FCALL)
+
+Advantages:
+- **Named and organized**: Functions have names and can be grouped into libraries
+- **Persistent**: Functions survive server restarts (stored in RDB/AOF)
+- **Versioned**: Can replace functions without affecting running code
+- **Better management**: Use `FUNCTION LIST`, `FUNCTION DELETE`, etc.
+
+### Scripts (EVAL/EVALSHA)
+
+Advantages:
+- **Simpler**: No need to manage function libraries
+- **More widely supported**: Available in older Redis versions
+- **Ad-hoc execution**: Good for one-off scripts
+
+### When to Use FCALL
+
+Use FCALL when:
+- You have reusable logic used across your application
+- You want functions to persist across server restarts
+- You need better organization and management of server-side code
+- You're building a complex application with many server-side operations
+
+### When to Use EVAL
+
+Use EVAL when:
+- You need a one-off script
+- You're working with older Redis versions
+- You want simpler deployment (no function management)
+- You're prototyping or testing
+
+## Loading Functions
+
+Before calling a function, it must be loaded on the server. Here's an example using the Redis CLI:
+
+```bash
+# Load a function library
+redis-cli FUNCTION LOAD "#!lua name=mylib
+redis.register_function('hello', function(keys, args)
+  return 'Hello, ' .. args[1] .. '!'
+end)"
+```
+
+From Node.js, you would typically load functions during application initialization:
+
+```typescript
+// Note: The SDK may not have a direct FUNCTION LOAD wrapper
+// You might need to use a raw command or the Redis CLI
+
+// Then call the function
+const result = await redis.fcall(
+  "hello",
+  [],
+  ["World"]
+);
+```
+
+## Error Handling
+
+```typescript
+try {
+  const result = await redis.fcall(
+    "my_function",
+    ["key1"],
+    ["arg1"]
+  );
+} catch (error) {
+  if (error.message.includes("no such function")) {
+    console.error("Function not loaded on server");
+    // Load the function or handle the error
+  } else {
+    console.error("Function execution error:", error);
+  }
+}
+```
+
+## Best Practices
+
+1. **Use descriptive function names**: `increment_user_counter` instead of `inc`
+2. **Load functions at startup**: Ensure all required functions are loaded when your application starts
+3. **Use FCALL_RO for reads**: Take advantage of read replicas for better performance
+4. **Handle errors gracefully**: Check if functions are loaded before calling them
+5. **Document your functions**: Keep documentation of what each function does and its parameters
+6. **Version your functions**: When updating functions, consider versioning strategies
+
+## See Also
+
+- [EVAL](/api/commands/eval) - Execute a Lua script
+- [EVALSHA](/api/commands/evalsha) - Execute a cached script by SHA-1 hash

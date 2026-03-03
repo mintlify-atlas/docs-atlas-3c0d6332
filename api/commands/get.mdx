@@ -1,0 +1,102 @@
+---
+title: 'get'
+description: 'Get the value of a key'
+---
+
+## Description
+
+Get the value of key. If the key does not exist, `null` is returned. An error is returned if the value stored at key is not a string.
+
+## Syntax
+
+```typescript
+redis.get<TData>(key: string): Promise<TData | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to retrieve
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="TData" type="type" default="string">
+  The expected type of the returned data. The SDK will attempt to deserialize the value to this type.
+</ParamField>
+
+## Returns
+
+<ResponseField name="value" type="TData | null">
+  The value of the key, or `null` if the key does not exist
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: 'https://your-redis-url.upstash.io',
+  token: 'your-token'
+});
+
+// Set and get a string value
+await redis.set('mykey', 'Hello, World!');
+const value = await redis.get('mykey');
+console.log(value); // "Hello, World!"
+
+// Get a non-existent key
+const missing = await redis.get('nonexistent');
+console.log(missing); // null
+```
+
+### Working with JSON Data
+
+```typescript
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+// Store JSON data
+const user = { id: 1, name: 'Alice', email: 'alice@example.com' };
+await redis.set('user:1', JSON.stringify(user));
+
+// Retrieve and parse JSON data
+const userData = await redis.get<string>('user:1');
+if (userData) {
+  const parsedUser: User = JSON.parse(userData);
+  console.log(parsedUser.name); // "Alice"
+}
+```
+
+### Using Automatic Deserialization
+
+```typescript
+// The SDK can automatically deserialize values
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+}
+
+const product = { id: 'p1', name: 'Widget', price: 19.99 };
+await redis.set('product:1', product);
+
+// Retrieve with type parameter
+const retrieved = await redis.get<Product>('product:1');
+console.log(retrieved?.price); // 19.99
+```
+
+## Related Commands
+
+- [set](/api/commands/set) - Set the string value of a key
+- [mget](/api/commands/mget) - Get the values of multiple keys
+
+## Redis Documentation
+
+For more information, see the [Redis GET documentation](https://redis.io/commands/get).

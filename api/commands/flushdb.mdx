@@ -1,0 +1,115 @@
+---
+title: flushdb
+description: Delete all keys in the current database
+---
+
+## Description
+
+Delete all the keys in the currently selected database. This command never fails.
+
+<Warning>
+This is a destructive operation that cannot be undone. Use with extreme caution, especially in production environments.
+</Warning>
+
+## Method Signature
+
+```typescript
+flushdb(opts?: { async?: boolean }): Promise<"OK">
+```
+
+## Parameters
+
+<ParamField path="opts" type="object">
+  Optional configuration object:
+  
+  <Expandable title="options">
+    <ParamField path="async" type="boolean">
+      When `true`, performs the flush asynchronously. The command returns immediately and the deletion happens in the background. This is useful for large databases to avoid blocking the server.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="'OK'">
+  Always returns `"OK"`
+</ResponseField>
+
+## Examples
+
+### Flush database synchronously
+
+```typescript
+await redis.set("key1", "value1");
+await redis.set("key2", "value2");
+
+const result = await redis.flushdb();
+console.log(result); // "OK"
+
+const size = await redis.dbsize();
+console.log(size); // 0
+```
+
+### Flush database asynchronously
+
+```typescript
+const result = await redis.flushdb({ async: true });
+console.log(result); // "OK"
+
+// Deletion happens in background
+// Database may not be empty immediately
+```
+
+### Clear test data
+
+```typescript
+import { beforeEach } from "vitest";
+
+beforeEach(async () => {
+  // Clean database before each test
+  await redis.flushdb();
+});
+```
+
+### Safe flush with confirmation
+
+```typescript
+const confirmFlush = process.env.CONFIRM_FLUSH === "true";
+
+if (confirmFlush) {
+  await redis.flushdb();
+  console.log("Database flushed");
+} else {
+  console.log("Flush cancelled - set CONFIRM_FLUSH=true to proceed");
+}
+```
+
+### Check size before and after
+
+```typescript
+const before = await redis.dbsize();
+console.log(`Keys before flush: ${before}`);
+
+await redis.flushdb();
+
+const after = await redis.dbsize();
+console.log(`Keys after flush: ${after}`);
+```
+
+## Async vs Sync
+
+### Synchronous (default)
+- Blocks the server until all keys are deleted
+- Suitable for small databases
+- Guarantees database is empty when command returns
+
+### Asynchronous
+- Returns immediately
+- Deletion happens in background
+- Suitable for large databases
+- Doesn't block other operations
+
+## See Also
+
+- [del](/api/commands/del) - Delete specific keys
+- [dbsize](/api/commands/dbsize) - Get number of keys

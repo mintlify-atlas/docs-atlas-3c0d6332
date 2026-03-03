@@ -1,0 +1,173 @@
+---
+title: geopos
+description: Get longitude and latitude coordinates of members
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const positions = await redis.geopos("cities", "San Francisco", "London");
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key containing the geospatial index.
+</ParamField>
+
+<ParamField path="members" type="string | string[]" required>
+  One or more members to get the position for. Can be passed as individual arguments or as an array.
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="Coordinates[]">
+  An array of coordinate objects in the same order as the requested members.
+  
+  Members that do not exist are omitted from the result array.
+  
+  <Expandable title="Coordinates properties">
+    <ResponseField name="lng" type="number">
+      The longitude coordinate.
+    </ResponseField>
+    
+    <ResponseField name="lat" type="number">
+      The latitude coordinate.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Examples
+
+### Get position for a single member
+
+```typescript
+// First, add a city
+await redis.geoadd("cities", {
+  longitude: -122.4194,
+  latitude: 37.7749,
+  member: "San Francisco"
+});
+
+const positions = await redis.geopos("cities", "San Francisco");
+// Returns: [{ lng: -122.41940104961395, lat: 37.77490009603002 }]
+```
+
+### Get positions for multiple members
+
+```typescript
+await redis.geoadd(
+  "cities",
+  {
+    longitude: -122.4194,
+    latitude: 37.7749,
+    member: "San Francisco"
+  },
+  {
+    longitude: -0.1276,
+    latitude: 51.5074,
+    member: "London"
+  },
+  {
+    longitude: 139.6917,
+    latitude: 35.6895,
+    member: "Tokyo"
+  }
+);
+
+const positions = await redis.geopos("cities", "San Francisco", "London", "Tokyo");
+// Returns:
+// [
+//   { lng: -122.41940104961395, lat: 37.77490009603002 },
+//   { lng: -0.12760043144226074, lat: 51.50739964418565 },
+//   { lng: 139.69171792268753, lat: 35.689499943217285 }
+// ]
+```
+
+### Handle missing members
+
+```typescript
+const positions = await redis.geopos(
+  "cities",
+  "San Francisco",
+  "NonExistent",  // This member doesn't exist
+  "London"
+);
+// Returns:
+// [
+//   { lng: -122.41940104961395, lat: 37.77490009603002 },
+//   { lng: -0.12760043144226074, lat: 51.50739964418565 }
+// ]
+// Note: NonExistent member is omitted from results
+```
+
+### Using array syntax
+
+```typescript
+const members = ["San Francisco", "London", "Tokyo"];
+const positions = await redis.geopos("cities", ...members);
+```
+
+### Verify coordinates after adding
+
+```typescript
+const originalCoords = {
+  longitude: 2.3522,
+  latitude: 48.8566
+};
+
+await redis.geoadd("cities", {
+  ...originalCoords,
+  member: "Paris"
+});
+
+const [retrieved] = await redis.geopos("cities", "Paris");
+
+console.log("Original:", originalCoords);
+console.log("Retrieved:", retrieved);
+// Original: { longitude: 2.3522, latitude: 48.8566 }
+// Retrieved: { lng: 2.352199852466583, lat: 48.85660005016098 }
+// Small differences due to internal encoding precision
+```
+
+## Important Notes
+
+### Coordinate Precision
+
+The returned coordinates may have slight variations from the original values due to:
+
+- Internal encoding using a 52-bit Geohash
+- Conversion between Geohash and coordinates
+- Floating-point arithmetic
+
+Typically, the precision loss is very small (within a few meters).
+
+### Return Format
+
+- The SDK returns coordinates as objects with `lng` and `lat` properties
+- Missing members are **omitted** from the results array (not returned as `null`)
+- The result array may be shorter than the input array if some members don't exist
+
+### Coordinate Order
+
+While `geoadd` uses `longitude` and `latitude` property names, `geopos` returns `lng` and `lat`:
+
+```typescript
+// Adding: uses 'longitude' and 'latitude'
+await redis.geoadd("cities", {
+  longitude: -122.4194,
+  latitude: 37.7749,
+  member: "San Francisco"
+});
+
+// Getting: uses 'lng' and 'lat'
+const [pos] = await redis.geopos("cities", "San Francisco");
+console.log(pos.lng, pos.lat);
+```

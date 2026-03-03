@@ -1,0 +1,269 @@
+---
+title: Connection model
+description: Understand the HTTP-based connectionless architecture and how it differs from traditional TCP connections
+---
+
+## Overview
+
+Upstash Redis uses an HTTP/REST-based connection model instead of traditional TCP connections. This fundamental difference makes it ideal for serverless and edge environments.
+
+## HTTP-based architecture
+
+Unlike traditional Redis clients that maintain persistent TCP connections, the Upstash Redis SDK communicates with Redis over HTTP:
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "https://your-redis.upstash.io", // HTTP endpoint
+  token: "your-token",
+});
+
+// Each command is an independent HTTP request
+await redis.set("key", "value"); // POST https://your-redis.upstash.io
+await redis.get("key");          // POST https://your-redis.upstash.io
+```
+
+## Why HTTP instead of TCP?
+
+The connectionless HTTP model provides several advantages for modern applications:
+
+### No connection management
+
+You don't need to worry about connection pooling, timeouts, or reconnection logic:
+
+```typescript
+// No connection setup required
+const redis = new Redis({ url, token });
+
+// Immediately ready to use
+await redis.get("key");
+
+// No cleanup or connection closing needed
+```
+
+### Perfect for serverless
+
+Serverless functions have short lifecycles and unpredictable scaling. HTTP connections work seamlessly:
+
+```typescript
+// AWS Lambda handler
+export const handler = async (event) => {
+  const redis = new Redis({ url, token });
+  
+  // No connection overhead
+  const value = await redis.get("counter");
+  
+  return { statusCode: 200, body: value };
+  // No cleanup needed - function terminates
+};
+```
+
+**Benefits for serverless:**
+
+- **No cold start overhead**: No connection establishment delay
+- **No lingering connections**: No idle connections consuming resources
+- **Infinite scaling**: Each invocation is independent
+- **No connection limits**: Not constrained by connection pool size
+
+### Edge runtime compatible
+
+Many edge runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) don't support TCP connections. HTTP works everywhere:
+
+```typescript
+// Cloudflare Workers
+import { Redis } from "@upstash/redis/cloudflare";
+
+export default {
+  async fetch(request: Request, env: Env) {
+    const redis = Redis.fromEnv(env);
+    await redis.incr("requests");
+    return new Response("OK");
+  },
+};
+```
+
+### Globally distributed
+
+HTTP requests can be routed through CDNs and edge networks for lower latency:
+
+```typescript
+// Automatically routed to the nearest edge location
+const redis = new Redis({ url, token });
+await redis.get("user:123");
+```
+
+## How it works
+
+Each Redis command becomes an HTTP POST request:
+
+### Single command
+
+```typescript
+await redis.set("greeting", "hello");
+```
+
+Translates to:
+
+```http
+POST https://your-redis.upstash.io
+Authorization: Bearer YOUR_TOKEN
+Content-Type: application/json
+
+["SET", "greeting", "hello"]
+```
+
+### Response format
+
+```typescript
+const value = await redis.get("greeting");
+// Returns: "hello"
+```
+
+HTTP response:
+
+```json
+{
+  "result": "aGVsbG8="  // base64 encoded by default
+}
+```
+
+<Info>
+By default, responses are base64-encoded to safely handle non-UTF8 data. The SDK automatically decodes them. See [client configuration](/concepts/client-configuration) to customize this.
+</Info>
+
+## Batch operations with pipelining
+
+To reduce latency when executing multiple commands, use pipelining to send them in a single HTTP request:
+
+```typescript
+// Manual pipeline - single HTTP request
+const pipeline = redis.pipeline();
+pipeline.set("key1", "value1");
+pipeline.set("key2", "value2");
+pipeline.get("key1");
+const results = await pipeline.exec();
+// ["OK", "OK", "value1"]
+```
+
+See [pipeline](/concepts/pipeline) and [auto-pipeline](/concepts/auto-pipeline) for details.
+
+## Performance considerations
+
+### Latency
+
+HTTP adds some overhead compared to raw TCP, but this is minimal:
+
+- **Single commands**: ~1-2ms additional latency
+- **Pipelined commands**: Overhead amortized across all commands
+- **Global read regions**: Can reduce latency significantly for reads
+
+### Optimization strategies
+
+**Use pipelining for multiple commands:**
+
+```typescript
+// Bad - 3 HTTP requests
+await redis.incr("counter");
+await redis.incr("requests");
+await redis.set("timestamp", Date.now());
+
+// Good - 1 HTTP request
+const p = redis.pipeline();
+p.incr("counter");
+p.incr("requests");
+p.set("timestamp", Date.now());
+await p.exec();
+```
+
+**Enable auto-pipelining:**
+
+```typescript
+const redis = new Redis({
+  url,
+  token,
+  enableAutoPipelining: true, // default
+});
+
+// These are automatically batched into a single request
+await redis.incr("counter");
+await redis.incr("requests");
+await redis.set("timestamp", Date.now());
+```
+
+**Use keep-alive for connection reuse:**
+
+```typescript
+const redis = new Redis({
+  url,
+  token,
+  keepAlive: true, // default
+});
+```
+
+## Comparison with TCP Redis clients
+
+| Feature | HTTP (Upstash) | TCP (Traditional) |
+|---------|----------------|-------------------|
+| Connection setup | None | Required |
+| Serverless friendly | Yes | No |
+| Edge runtime support | Yes | Limited |
+| Connection pooling | Not needed | Required |
+| Cold start overhead | None | Significant |
+| Horizontal scaling | Unlimited | Limited by connections |
+| Latency (single cmd) | ~1-2ms higher | Lower |
+| Latency (pipelined) | Comparable | Comparable |
+| State management | Stateless | Stateful |
+
+## Authentication
+
+HTTP connections use Bearer token authentication:
+
+```typescript
+const redis = new Redis({
+  url: "https://your-redis.upstash.io",
+  token: "your-secret-token", // Sent as Authorization: Bearer header
+});
+```
+
+<Warning>
+Never expose your token in client-side code. The token provides full access to your database.
+</Warning>
+
+## Request timeout and cancellation
+
+Use `AbortSignal` to cancel long-running requests:
+
+```typescript
+const controller = new AbortController();
+
+const redis = new Redis({
+  url,
+  token,
+  signal: controller.signal,
+});
+
+// Cancel after 5 seconds
+setTimeout(() => controller.abort(), 5000);
+
+try {
+  await redis.get("key");
+} catch (error) {
+  // Request was aborted
+}
+```
+
+## Error handling
+
+HTTP errors are transparently handled:
+
+```typescript
+try {
+  await redis.get("key");
+} catch (error) {
+  // Network errors, auth failures, etc.
+  console.error(error);
+}
+```
+
+The SDK automatically retries on transient failures. See [client configuration](/concepts/client-configuration) for retry options.

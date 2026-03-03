@@ -1,0 +1,153 @@
+---
+title: 'ZSCORE'
+description: 'Get the score associated with a member in a sorted set'
+---
+
+## Method Signature
+
+```typescript
+zscore(
+  key: string,
+  member: TData
+): Promise<number | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+<ParamField path="member" type="TData" required>
+  The member whose score you want to retrieve
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number | null">
+  The score of the member as a number.
+  
+  Returns `null` if the member does not exist in the sorted set or the key does not exist.
+</ResponseField>
+
+## Examples
+
+### Get score of a member
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Add members to a leaderboard
+await redis.zadd(
+  'leaderboard',
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' },
+  { score: 92, member: 'player3' }
+);
+
+// Get player1's score
+const score = await redis.zscore('leaderboard', 'player1');
+console.log(score); // 100
+```
+
+### Handle non-existing member
+
+```typescript
+const score = await redis.zscore('leaderboard', 'nonexistent');
+console.log(score); // null
+
+if (score === null) {
+  console.log('Player not found in leaderboard');
+} else {
+  console.log(`Player score: ${score}`);
+}
+```
+
+### Update score based on current value
+
+```typescript
+// Get current score
+const currentScore = await redis.zscore('leaderboard', 'player1');
+
+if (currentScore !== null) {
+  // Award bonus points
+  const bonusPoints = 50;
+  await redis.zadd('leaderboard', {
+    score: currentScore + bonusPoints,
+    member: 'player1',
+  });
+  
+  console.log(`New score: ${currentScore + bonusPoints}`);
+}
+```
+
+### Get multiple scores
+
+```typescript
+const players = ['player1', 'player2', 'player3'];
+
+const scores = await Promise.all(
+  players.map(player => redis.zscore('leaderboard', player))
+);
+
+players.forEach((player, index) => {
+  console.log(`${player}: ${scores[index] ?? 'Not found'}`);
+});
+```
+
+### Calculate score difference
+
+```typescript
+const score1 = await redis.zscore('leaderboard', 'player1');
+const score2 = await redis.zscore('leaderboard', 'player2');
+
+if (score1 !== null && score2 !== null) {
+  const difference = Math.abs(score1 - score2);
+  console.log(`Score difference: ${difference}`);
+}
+```
+
+### Display member with score and rank
+
+```typescript
+const member = 'player1';
+
+const [score, rank] = await Promise.all([
+  redis.zscore('leaderboard', member),
+  redis.zrank('leaderboard', member),
+]);
+
+if (score !== null && rank !== null) {
+  console.log(`${member}:`);
+  console.log(`  Score: ${score}`);
+  console.log(`  Rank: ${rank + 1}`);
+} else {
+  console.log(`${member} not found`);
+}
+```
+
+### Check if score meets threshold
+
+```typescript
+const threshold = 90;
+const score = await redis.zscore('leaderboard', 'player1');
+
+if (score !== null && score >= threshold) {
+  console.log('Player qualifies for next level!');
+} else {
+  const needed = threshold - (score ?? 0);
+  console.log(`Need ${needed} more points to qualify`);
+}
+```
+
+## Related Commands
+
+- [ZADD](/api/commands/zadd) - Add or update members in a sorted set
+- [ZINCRBY](/api/commands/zincrby) - Increment the score of a member
+- [ZRANK](/api/commands/zrank) - Get the rank of a member
+- [ZRANGE](/api/commands/zrange) - Return a range of members

@@ -1,0 +1,84 @@
+---
+title: SDIFF
+description: Get the difference between sets
+---
+
+Returns the members of the set resulting from the difference between the first set and all the successive sets. Keys that do not exist are considered to be empty sets.
+
+## Usage
+
+```typescript
+await redis.sdiff(key, ...keys);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The first set key (the set to subtract from)
+</ParamField>
+
+<ParamField body="keys" type="string[]">
+  Additional set keys to subtract from the first set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="TData[]">
+  An array containing the members of the resulting set (difference of the sets)
+</ResponseField>
+
+## Examples
+
+### Difference between two sets
+
+```typescript
+await redis.sadd("set1", "a", "b", "c", "d");
+await redis.sadd("set2", "c", "d", "e", "f");
+
+const result = await redis.sdiff("set1", "set2");
+console.log(result); // ["a", "b"]
+```
+
+### Difference with multiple sets
+
+```typescript
+await redis.sadd("all:items", "item1", "item2", "item3", "item4", "item5");
+await redis.sadd("sold:items", "item2", "item4");
+await redis.sadd("reserved:items", "item5");
+
+const available = await redis.sdiff(
+  "all:items",
+  "sold:items",
+  "reserved:items"
+);
+console.log(available); // ["item1", "item3"]
+```
+
+### Find unique skills
+
+```typescript
+await redis.sadd("team:skills", "javascript", "python", "go", "rust");
+await redis.sadd("required:skills", "javascript", "python");
+
+const bonusSkills = await redis.sdiff("team:skills", "required:skills");
+console.log(bonusSkills); // ["go", "rust"]
+```
+
+### Difference with non-existing set
+
+```typescript
+await redis.sadd("set1", "a", "b", "c");
+
+const result = await redis.sdiff("set1", "nonexistent");
+console.log(result); // ["a", "b", "c"]
+```
+
+### Order matters
+
+```typescript
+await redis.sadd("set1", "a", "b", "c");
+await redis.sadd("set2", "b", "c", "d");
+
+console.log(await redis.sdiff("set1", "set2")); // ["a"]
+console.log(await redis.sdiff("set2", "set1")); // ["d"]
+```

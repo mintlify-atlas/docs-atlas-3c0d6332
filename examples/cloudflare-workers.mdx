@@ -1,0 +1,603 @@
+---
+title: "Cloudflare Workers"
+description: "Use Upstash Redis with Cloudflare Workers at the edge"
+---
+
+This guide shows how to use Upstash Redis with Cloudflare Workers. The HTTP-based SDK is specifically designed for edge computing environments where traditional TCP connections aren't available.
+
+## Why Upstash Redis for Cloudflare Workers?
+
+- **Edge-native**: HTTP-based connection perfect for Workers
+- **Global low latency**: Access Redis from 300+ cities worldwide
+- **No cold starts**: Instant execution at the edge
+- **Automatic scaling**: Handles traffic spikes seamlessly
+
+## Prerequisites
+
+<Steps>
+  <Step title="Create Cloudflare Account">
+    Sign up for a [Cloudflare account](https://dash.cloudflare.com/sign-up/workers)
+  </Step>
+  
+  <Step title="Install Wrangler CLI">
+    Install the Cloudflare Workers CLI:
+    ```bash
+    npm install -g wrangler
+    ```
+  </Step>
+  
+  <Step title="Create Upstash Redis Database">
+    Create a Redis database on [Upstash Console](https://console.upstash.com/redis)
+  </Step>
+</Steps>
+
+## Quick Start
+
+### Project Setup
+
+<Steps>
+  <Step title="Clone Example or Create New Project">
+    ```bash
+    git clone https://github.com/upstash/upstash-redis.git
+    cd upstash-redis/examples/cloudflare-workers
+    ```
+    
+    Or create a new project:
+    ```bash
+    mkdir my-worker
+    cd my-worker
+    npm init -y
+    ```
+  </Step>
+  
+  <Step title="Install Dependencies">
+    ```bash
+    npm install @upstash/redis
+    npm install -D wrangler
+    ```
+  </Step>
+</Steps>
+
+## Example: Counter Worker
+
+This example implements a simple counter that increments on each request.
+
+<CodeGroup>
+```javascript index.js
+import { Redis } from "@upstash/redis/cloudflare";
+
+export default {
+  async fetch(_request, env) {
+    const redis = Redis.fromEnv(env);
+
+    const count = await redis.incr("cloudflare-workers-count");
+
+    return new Response(JSON.stringify({ count }));
+  },
+};
+```
+
+```typescript index.ts
+import { Redis } from "@upstash/redis/cloudflare";
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+
+    const count = await redis.incr("cloudflare-workers-count");
+
+    return new Response(JSON.stringify({ count }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+};
+```
+
+```toml wrangler.toml
+name = "upstash-redis"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Set variables here or in Cloudflare dashboard
+# [vars]
+# UPSTASH_REDIS_REST_URL = "https://your-endpoint.upstash.io"
+# UPSTASH_REDIS_REST_TOKEN = "your-token"
+```
+
+```json package.json
+{
+  "name": "cloudflare-workers",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers with Upstash Redis",
+  "scripts": {
+    "start": "wrangler dev",
+    "publish": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  },
+  "dependencies": {
+    "@upstash/redis": "latest"
+  }
+}
+```
+</CodeGroup>
+
+<Note>
+  Notice the import path: `@upstash/redis/cloudflare` - This is important for Cloudflare Workers compatibility.
+</Note>
+
+## Configuration
+
+### Add Environment Variables
+
+You can configure environment variables in two ways:
+
+#### Option 1: wrangler.toml (Not Recommended for Production)
+
+```toml wrangler.toml
+name = "my-worker"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+UPSTASH_REDIS_REST_URL = "https://your-endpoint.upstash.io"
+UPSTASH_REDIS_REST_TOKEN = "your-token"
+```
+
+#### Option 2: Cloudflare Dashboard (Recommended)
+
+<Steps>
+  <Step title="Go to Workers Dashboard">
+    Navigate to your [Cloudflare Workers dashboard](https://dash.cloudflare.com/)
+  </Step>
+  
+  <Step title="Select Your Worker">
+    Click on your Worker or create a new one
+  </Step>
+  
+  <Step title="Add Environment Variables">
+    Go to **Settings** > **Variables** and add:
+    - `UPSTASH_REDIS_REST_URL`
+    - `UPSTASH_REDIS_REST_TOKEN`
+  </Step>
+</Steps>
+
+#### Option 3: Wrangler CLI Secrets (Most Secure)
+
+```bash
+wrangler secret put UPSTASH_REDIS_REST_URL
+wrangler secret put UPSTASH_REDIS_REST_TOKEN
+```
+
+## Development
+
+### Run Locally
+
+<Steps>
+  <Step title="Start Development Server">
+    ```bash
+    npm run start
+    # or
+    wrangler dev
+    ```
+  </Step>
+  
+  <Step title="Test Your Worker">
+    Open your browser at [localhost:8787](http://localhost:8787)
+  </Step>
+</Steps>
+
+### Deploy to Cloudflare
+
+```bash
+npm run publish
+# or
+wrangler deploy
+```
+
+Your Worker will be deployed to Cloudflare's global network and accessible via a `*.workers.dev` URL.
+
+## Advanced Examples
+
+### REST API with Routing
+
+```typescript
+import { Redis } from "@upstash/redis/cloudflare";
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    // GET /counter - Get current count
+    if (path === "/counter" && request.method === "GET") {
+      const count = await redis.get<number>("counter") || 0;
+      return new Response(JSON.stringify({ count }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // POST /counter/increment - Increment counter
+    if (path === "/counter/increment" && request.method === "POST") {
+      const count = await redis.incr("counter");
+      return new Response(JSON.stringify({ count }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // POST /counter/reset - Reset counter
+    if (path === "/counter/reset" && request.method === "POST") {
+      await redis.set("counter", 0);
+      return new Response(JSON.stringify({ count: 0 }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response("Not found", { status: 404 });
+  },
+};
+```
+
+### Edge Caching
+
+```typescript
+import { Redis } from "@upstash/redis/cloudflare";
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+    const url = new URL(request.url);
+    const cacheKey = `cache:${url.pathname}`;
+
+    // Try cache first
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return new Response(JSON.stringify(cached), {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Cache": "HIT",
+        },
+      });
+    }
+
+    // Simulate fetching data
+    const data = {
+      message: "Hello from the edge!",
+      timestamp: new Date().toISOString(),
+      location: request.cf?.city || "Unknown",
+    };
+
+    // Cache for 1 minute
+    await redis.set(cacheKey, data, { ex: 60 });
+
+    return new Response(JSON.stringify(data), {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Cache": "MISS",
+      },
+    });
+  },
+};
+```
+
+### Rate Limiting at the Edge
+
+```typescript
+import { Redis } from "@upstash/redis/cloudflare";
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+const RATE_LIMIT = 10; // requests per minute
+const WINDOW = 60; // seconds
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+    
+    // Use CF-Connecting-IP header for client IP
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const key = `rate_limit:${ip}`;
+
+    // Get current count
+    const current = await redis.incr(key);
+
+    // Set expiration on first request
+    if (current === 1) {
+      await redis.expire(key, WINDOW);
+    }
+
+    // Check if limit exceeded
+    if (current > RATE_LIMIT) {
+      const ttl = await redis.ttl(key);
+      return new Response(
+        JSON.stringify({
+          error: "Rate limit exceeded",
+          retryAfter: ttl,
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": ttl.toString(),
+          },
+        }
+      );
+    }
+
+    // Process request
+    return new Response(
+      JSON.stringify({
+        message: "Success",
+        remaining: RATE_LIMIT - current,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-RateLimit-Limit": RATE_LIMIT.toString(),
+          "X-RateLimit-Remaining": (RATE_LIMIT - current).toString(),
+        },
+      }
+    );
+  },
+};
+```
+
+### Session Management
+
+```typescript
+import { Redis } from "@upstash/redis/cloudflare";
+
+interface Session {
+  id: string;
+  userId?: string;
+  createdAt: number;
+  lastActivity: number;
+  data: Record<string, any>;
+}
+
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+}
+
+function generateSessionId(): string {
+  return crypto.randomUUID();
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env);
+    
+    // Get or create session
+    let sessionId = request.headers.get("X-Session-ID");
+    let session: Session | null = null;
+
+    if (sessionId) {
+      session = await redis.get<Session>(`session:${sessionId}`);
+    }
+
+    if (!session) {
+      sessionId = generateSessionId();
+      session = {
+        id: sessionId,
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        data: {},
+      };
+    }
+
+    // Update session activity
+    session.lastActivity = Date.now();
+
+    // Store session with 1 hour expiration
+    await redis.set(`session:${sessionId}`, session, { ex: 3600 });
+
+    return new Response(
+      JSON.stringify({
+        sessionId,
+        session,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-ID": sessionId,
+        },
+      }
+    );
+  },
+};
+```
+
+## TypeScript Support
+
+For full TypeScript support, use the TypeScript template:
+
+```bash
+wrangler init my-worker --type typescript
+```
+
+Define your environment interface:
+
+```typescript
+export interface Env {
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
+  // Add other environment variables here
+}
+```
+
+## Best Practices
+
+### Initialize Redis Client Inside Handler
+
+Unlike traditional environments, Workers don't maintain state between requests. Initialize the client in each request:
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const redis = Redis.fromEnv(env); // Initialize per request
+    // Use redis...
+  },
+};
+```
+
+### Error Handling
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      const redis = Redis.fromEnv(env);
+      const data = await redis.get("key");
+      
+      return new Response(JSON.stringify({ data }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("Redis error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal server error" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+  },
+};
+```
+
+### Use Edge Location Data
+
+Cloudflare provides request context with location data:
+
+```typescript
+const location = {
+  country: request.cf?.country,
+  city: request.cf?.city,
+  timezone: request.cf?.timezone,
+  latitude: request.cf?.latitude,
+  longitude: request.cf?.longitude,
+};
+
+// Store location-specific data
+await redis.set(`visitor:${ip}`, location);
+```
+
+## Testing
+
+### Local Testing with Wrangler
+
+```bash
+wrangler dev
+```
+
+Test endpoints:
+```bash
+curl http://localhost:8787/counter
+curl -X POST http://localhost:8787/counter/increment
+```
+
+### Unit Testing
+
+For unit testing Workers, see [Cloudflare Workers testing documentation](https://developers.cloudflare.com/workers/testing/).
+
+## Monitoring
+
+### View Logs
+
+```bash
+wrangler tail
+```
+
+Or view logs in the [Cloudflare Dashboard](https://dash.cloudflare.com/).
+
+### Add Custom Logging
+
+```typescript
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    console.log("Request:", request.url);
+    
+    const start = Date.now();
+    const redis = Redis.fromEnv(env);
+    const result = await redis.get("key");
+    const duration = Date.now() - start;
+    
+    console.log(`Redis GET completed in ${duration}ms`);
+    
+    return new Response(JSON.stringify(result));
+  },
+};
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Module not found: @upstash/redis/cloudflare">
+    Make sure you're using the correct import path:
+    ```typescript
+    import { Redis } from "@upstash/redis/cloudflare";
+    ```
+    Not:
+    ```typescript
+    import { Redis } from "@upstash/redis"; // Wrong for Workers!
+    ```
+  </Accordion>
+  
+  <Accordion title="Environment variables not accessible">
+    Ensure variables are:
+    1. Set in `wrangler.toml` [vars] section, OR
+    2. Set in Cloudflare Dashboard, OR
+    3. Set as secrets via `wrangler secret put`
+    
+    Access them via the `env` parameter:
+    ```typescript
+    Redis.fromEnv(env) // Pass the env object
+    ```
+  </Accordion>
+  
+  <Accordion title="Deployment fails">
+    Check your `wrangler.toml` configuration:
+    - `name` must be unique
+    - `main` must point to your entry file
+    - `compatibility_date` should be recent
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AWS Lambda" icon="aws" href="/examples/aws-lambda">
+    Deploy Redis with AWS Lambda
+  </Card>
+  <Card title="Next.js" icon="react" href="/examples/next-js">
+    Integrate Redis with Next.js
+  </Card>
+  <Card title="Basic Usage" icon="book" href="/examples/basic-usage">
+    Learn more Redis operations
+  </Card>
+  <Card title="Cloudflare Docs" icon="cloudflare" href="https://developers.cloudflare.com/workers/">
+    Cloudflare Workers documentation
+  </Card>
+</CardGroup>

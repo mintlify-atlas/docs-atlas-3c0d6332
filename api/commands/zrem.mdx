@@ -1,0 +1,91 @@
+---
+title: 'ZREM'
+description: 'Remove one or more members from a sorted set'
+---
+
+## Method Signature
+
+```typescript
+zrem(
+  key: string,
+  ...members: TData[]
+): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+<ParamField path="members" type="TData[]" required>
+  One or more member values to remove from the sorted set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The number of members removed from the sorted set, not including non-existing members
+</ResponseField>
+
+## Examples
+
+### Remove a single member
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// First, add some members
+await redis.zadd(
+  'leaderboard',
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' },
+  { score: 92, member: 'player3' }
+);
+
+// Remove a member
+const result = await redis.zrem('leaderboard', 'player2');
+console.log(result); // 1
+```
+
+### Remove multiple members
+
+```typescript
+const result = await redis.zrem('leaderboard', 'player1', 'player2', 'player3');
+console.log(result); // 3 (or fewer if some members don't exist)
+```
+
+### Remove non-existing member
+
+```typescript
+const result = await redis.zrem('leaderboard', 'nonexistent');
+console.log(result); // 0
+```
+
+### Remove and verify
+
+```typescript
+// Check member count before removal
+const countBefore = await redis.zcard('leaderboard');
+console.log(countBefore); // e.g., 5
+
+// Remove members
+const removed = await redis.zrem('leaderboard', 'player1', 'player2');
+console.log(removed); // 2
+
+// Verify count after removal
+const countAfter = await redis.zcard('leaderboard');
+console.log(countAfter); // 3
+```
+
+## Related Commands
+
+- [ZADD](/api/commands/zadd) - Add members to a sorted set
+- [ZCARD](/api/commands/zcard) - Get the number of members
+- [ZRANGE](/api/commands/zrange) - Return a range of members
+- [ZRANK](/api/commands/zrank) - Get the rank of a member

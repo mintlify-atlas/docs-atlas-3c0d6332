@@ -1,0 +1,184 @@
+---
+title: Node.js
+description: Use Upstash Redis SDK in Node.js applications
+---
+
+The Upstash Redis SDK works seamlessly in Node.js environments, including serverless functions, AWS Lambda, and traditional Node.js applications.
+
+## Installation
+
+```bash
+npm install @upstash/redis
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Import the SDK">
+    The default export is optimized for Node.js:
+
+    ```typescript
+    import { Redis } from "@upstash/redis";
+    ```
+
+    You can also use the explicit Node.js import:
+
+    ```typescript
+    import { Redis } from "@upstash/redis/node";
+    ```
+  </Step>
+
+  <Step title="Create a Redis instance">
+    <Tabs>
+      <Tab title="From Environment">
+        Use `fromEnv()` to automatically load credentials from environment variables:
+
+        ```typescript
+        const redis = Redis.fromEnv();
+        ```
+
+        This will read from:
+        - `UPSTASH_REDIS_REST_URL` or `KV_REST_API_URL`
+        - `UPSTASH_REDIS_REST_TOKEN` or `KV_REST_API_TOKEN`
+
+        <Note>
+          The fallback variables (`KV_REST_API_URL` and `KV_REST_API_TOKEN`) provide compatibility with Vercel KV and other platforms.
+        </Note>
+      </Tab>
+
+      <Tab title="With Credentials">
+        ```typescript
+        const redis = new Redis({
+          url: "<UPSTASH_REDIS_REST_URL>",
+          token: "<UPSTASH_REDIS_REST_TOKEN>",
+        });
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Use Redis commands">
+    ```typescript
+    const count = await redis.incr("counter");
+    console.log("Counter:", count);
+    ```
+  </Step>
+</Steps>
+
+## Configuration Options
+
+The Node.js SDK supports several configuration options:
+
+```typescript
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_REST_URL>",
+  token: "<UPSTASH_REDIS_REST_TOKEN>",
+  
+  // Node.js specific: HTTP(S) agent for connection pooling
+  agent: new https.Agent({ keepAlive: true }),
+  
+  // Or use the simplified keepAlive option
+  keepAlive: true,
+  
+  // Abort requests using AbortSignal
+  signal: abortController.signal,
+  
+  // Enable latency logging
+  latencyLogging: true,
+  
+  // Automatic deserialization of JSON values
+  automaticDeserialization: true,
+  
+  // Read-your-writes consistency
+  readYourWrites: true,
+  
+  // Enable telemetry (default: true)
+  enableTelemetry: true,
+  
+  // Configure retry behavior
+  retry: {
+    retries: 3,
+    backoff: (retryCount) => Math.exp(retryCount) * 50,
+  },
+  
+  // Response encoding
+  responseEncoding: "base64",
+  
+  // Cache control
+  cache: "no-store",
+});
+```
+
+### Connection Pooling with Agent
+
+For optimal performance in Node.js applications with multiple sequential requests, use an HTTP(S) agent:
+
+```typescript
+import https from "https";
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_REST_URL>",
+  token: "<UPSTASH_REDIS_REST_TOKEN>",
+  agent: new https.Agent({ keepAlive: true }),
+});
+```
+
+<Warning>
+  The `agent` option is Node.js specific and not supported in edge runtimes like Vercel Edge Functions or Cloudflare Workers.
+</Warning>
+
+### Using fromEnv() with Options
+
+You can combine `fromEnv()` with additional configuration:
+
+```typescript
+const redis = Redis.fromEnv({
+  keepAlive: true,
+  latencyLogging: true,
+  automaticDeserialization: true,
+});
+```
+
+## Example Application
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
+
+async function run() {
+  const count = await redis.incr("counter");
+  console.log("Counter:", count);
+}
+
+run();
+```
+
+## Platform Detection
+
+The SDK automatically detects the runtime environment and sets appropriate telemetry:
+
+- **Node.js**: Reports as `node@<version>` (e.g., `node@18.17.0`)
+- **Edge Runtime**: Reports as `edge-light` when running in Vercel Edge Functions
+- **Platform**: Detects Vercel, AWS, or Upstash Console environments
+
+## Environment Variables
+
+When using `Redis.fromEnv()`, the SDK looks for these environment variables via `process.env`:
+
+| Variable | Fallback | Description |
+|----------|----------|-------------|
+| `UPSTASH_REDIS_REST_URL` | `KV_REST_API_URL` | Your Redis REST URL |
+| `UPSTASH_REDIS_REST_TOKEN` | `KV_REST_API_TOKEN` | Your Redis REST token |
+| `UPSTASH_DISABLE_TELEMETRY` | - | Set to disable telemetry |
+
+<Note>
+  If `process.env` is not available (e.g., in Cloudflare Workers), use the platform-specific import instead: `@upstash/redis/cloudflare`
+</Note>
+
+## Related
+
+- [Vercel Guide](/platforms/vercel) - Using Redis with Vercel Functions
+- [Configuration](/concepts/client-configuration) - Complete configuration reference
+- [Examples](https://github.com/upstash/redis-js/tree/main/examples/nodejs) - Node.js examples on GitHub

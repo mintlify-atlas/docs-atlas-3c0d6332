@@ -1,0 +1,62 @@
+---
+title: SCARD
+description: Get the number of members in a set
+---
+
+Returns the cardinality (number of elements) of the set stored at key.
+
+## Usage
+
+```typescript
+await redis.scard(key);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The key of the set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The cardinality (number of members) of the set, or `0` if the key does not exist
+</ResponseField>
+
+## Examples
+
+### Get set size
+
+```typescript
+await redis.sadd("myset", "hello", "world", "foo");
+const size = await redis.scard("myset");
+console.log(size); // 3
+```
+
+### Get size of empty set
+
+```typescript
+const size = await redis.scard("nonexistent");
+console.log(size); // 0
+```
+
+### Track active sessions
+
+```typescript
+await redis.sadd("sessions:active", "session1", "session2", "session3");
+const activeCount = await redis.scard("sessions:active");
+console.log(`Active sessions: ${activeCount}`); // Active sessions: 3
+```
+
+### Monitor set size changes
+
+```typescript
+await redis.sadd("tags", "javascript", "typescript");
+console.log(await redis.scard("tags")); // 2
+
+await redis.sadd("tags", "python", "go");
+console.log(await redis.scard("tags")); // 4
+
+await redis.srem("tags", "javascript");
+console.log(await redis.scard("tags")); // 3
+```

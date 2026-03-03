@@ -1,0 +1,260 @@
+---
+title: Telemetry
+description: Understanding and configuring telemetry data collection in Upstash Redis SDK
+---
+
+## Overview
+
+The Upstash Redis SDK collects anonymous telemetry data to help improve the SDK and understand usage patterns. This data includes runtime information, platform details, and SDK version.
+
+<Note>
+Telemetry is **enabled by default** but can be easily disabled. No sensitive data or command payloads are collected.
+</Note>
+
+## What Data is Collected
+
+The SDK sends the following metadata with requests:
+
+- **Runtime**: The JavaScript runtime environment (e.g., `node@18.0.0`, `edge-light`)
+- **Platform**: The deployment platform (e.g., `vercel`, `aws`, `console`, or `unknown`)
+- **SDK version**: The version of `@upstash/redis` being used (e.g., `@upstash/redis@1.22.0`)
+
+This information is sent via HTTP headers and does not include:
+- Your data or Redis commands
+- API keys or credentials
+- User identifiable information
+- IP addresses or personal data
+
+## Disabling Telemetry
+
+### Via Configuration
+
+Disable telemetry when creating a Redis client:
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableTelemetry: false,
+});
+```
+
+### Via Environment Variable
+
+Set the `UPSTASH_DISABLE_TELEMETRY` environment variable:
+
+```bash
+export UPSTASH_DISABLE_TELEMETRY=1
+```
+
+Then create your client normally:
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  // Telemetry is automatically disabled via environment variable
+});
+```
+
+### With fromEnv()
+
+When using `fromEnv()`, telemetry respects the environment variable:
+
+```typescript
+const redis = Redis.fromEnv({
+  enableTelemetry: false, // Explicitly disable
+});
+
+// Or rely on UPSTASH_DISABLE_TELEMETRY env var
+const redis = Redis.fromEnv();
+```
+
+## How Telemetry Works
+
+### Runtime Detection
+
+The SDK automatically detects your runtime environment:
+
+```typescript
+// Detection logic from platforms/nodejs.ts
+const runtime = 
+  typeof EdgeRuntime === 'string' ? 'edge-light' :
+  nodeVersion ? `node@${nodeVersion}` :
+  'unknown';
+```
+
+Possible runtime values:
+- `edge-light` - Edge runtime (Vercel Edge, Cloudflare Workers, etc.)
+- `node@{version}` - Node.js runtime with version
+- `unknown` - Unknown runtime
+
+### Platform Detection
+
+The SDK detects the deployment platform from environment variables:
+
+```typescript
+// Detection logic from platforms/nodejs.ts
+const platform = 
+  process.env.UPSTASH_CONSOLE ? 'console' :
+  process.env.VERCEL ? 'vercel' :
+  process.env.AWS_REGION ? 'aws' :
+  'unknown';
+```
+
+Possible platform values:
+- `console` - Running in Upstash console
+- `vercel` - Deployed on Vercel
+- `aws` - Deployed on AWS (Lambda, etc.)
+- `unknown` - Unknown or local environment
+
+### Telemetry Headers
+
+Telemetry data is sent via the `Upstash-Telemetry-*` HTTP headers:
+
+```
+Upstash-Telemetry-Runtime: node@18.0.0
+Upstash-Telemetry-Platform: vercel
+Upstash-Telemetry-Sdk: @upstash/redis@1.22.0
+```
+
+## Implementation Details
+
+### Telemetry Configuration
+
+The telemetry flag is checked during client initialization:
+
+```typescript
+// From pkg/redis.ts
+const enableTelemetry = opts?.enableTelemetry ?? !safeEnv.UPSTASH_DISABLE_TELEMETRY;
+```
+
+Priority order:
+1. Explicit `enableTelemetry` option in config
+2. `UPSTASH_DISABLE_TELEMETRY` environment variable
+3. Default: **enabled**
+
+### Adding Telemetry Data
+
+The SDK adds telemetry during initialization:
+
+```typescript
+// From pkg/redis.ts
+this.addTelemetry({
+  runtime: typeof EdgeRuntime === 'string' ? 'edge-light' : 
+           nodeVersion ? `node@${nodeVersion}` : 'unknown',
+  platform: safeEnv.UPSTASH_CONSOLE ? 'console' :
+            safeEnv.VERCEL ? 'vercel' :
+            safeEnv.AWS_REGION ? 'aws' : 'unknown',
+  sdk: `@upstash/redis@${VERSION}`,
+});
+```
+
+### Telemetry with Custom Requester
+
+If you provide a custom `Requester`, telemetry will still work if your requester implements the `mergeTelemetry` method:
+
+```typescript
+import { Requester, UpstashRequest, UpstashResponse } from '@upstash/redis';
+
+const customRequester: Requester = {
+  request: async <TResult>(req: UpstashRequest): Promise<UpstashResponse<TResult>> => {
+    // Your custom request logic
+  },
+  
+  mergeTelemetry: (telemetry) => {
+    // Merge telemetry data into request headers
+  }
+};
+
+const redis = new Redis(customRequester);
+```
+
+## Examples
+
+### Disable for Development
+
+```typescript
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableTelemetry: process.env.NODE_ENV === 'production',
+});
+```
+
+### Environment-Based Configuration
+
+```bash
+# .env.production
+UPSTASH_REDIS_REST_URL=https://...
+UPSTASH_REDIS_REST_TOKEN=...
+# Telemetry enabled by default
+
+# .env.development
+UPSTASH_REDIS_REST_URL=https://...
+UPSTASH_REDIS_REST_TOKEN=...
+UPSTASH_DISABLE_TELEMETRY=1
+```
+
+### Conditional Telemetry
+
+```typescript
+const enableTelemetry = !process.env.CI && process.env.NODE_ENV === 'production';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  enableTelemetry,
+});
+```
+
+## Privacy Considerations
+
+The Upstash Redis SDK is committed to user privacy:
+
+- **No data collection**: Your Redis data and commands are never collected
+- **No tracking**: No unique identifiers or tracking cookies
+- **Anonymous**: Runtime and platform info cannot identify individual users
+- **Transparent**: This page documents exactly what is collected
+- **Easy to disable**: Multiple ways to opt-out
+
+## Why Telemetry?
+
+Telemetry helps us:
+
+1. **Prioritize platform support** - Understand which runtimes and platforms to focus on
+2. **Identify compatibility issues** - Detect problems with specific runtime versions
+3. **Measure adoption** - Track SDK version distribution to plan deprecations
+4. **Improve developer experience** - Make data-driven decisions about features
+
+## FAQs
+
+### Does telemetry affect performance?
+
+No. Telemetry data is included as HTTP headers and adds negligible overhead (< 1KB).
+
+### Can I see the telemetry data being sent?
+
+Yes. Enable debug logging or use network inspection tools to see the HTTP headers:
+
+```bash
+# Using curl with verbose output
+curl -v https://your-redis-url.upstash.io/get/mykey \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Does disabling telemetry affect functionality?
+
+No. The SDK works exactly the same with or without telemetry enabled.
+
+### Is telemetry sent for every request?
+
+Yes, telemetry headers are included with every HTTP request when enabled.
+
+## See Also
+
+- [Configuration Options](/concepts/client-configuration)
+- [Error Handling](/advanced/error-handling)
+- [Environment Variables](https://docs.upstash.com/redis/features/restapi)

@@ -1,0 +1,76 @@
+---
+title: ttl
+description: Get the time to live for a key in seconds
+---
+
+## Description
+
+Returns the remaining time to live of a key that has a timeout. This introspection capability allows a Redis client to check how many seconds a given key will continue to be part of the dataset.
+
+## Method Signature
+
+```typescript
+ttl(key: string): Promise<number>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key to get the time to live for
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="number">
+  The time to live in seconds, or:
+  - `-2` if the key does not exist
+  - `-1` if the key exists but has no associated expire
+</ResponseField>
+
+## Examples
+
+### Get TTL for a key with expiration
+
+```typescript
+await redis.set("mykey", "value");
+await redis.expire("mykey", 100);
+
+const ttl = await redis.ttl("mykey");
+console.log(ttl); // ~100 (depends on timing)
+```
+
+### Key with no expiration
+
+```typescript
+await redis.set("mykey", "value");
+const ttl = await redis.ttl("mykey");
+console.log(ttl); // -1
+```
+
+### Non-existent key
+
+```typescript
+const ttl = await redis.ttl("nonexistent");
+console.log(ttl); // -2
+```
+
+### Monitor TTL over time
+
+```typescript
+await redis.set("mykey", "value");
+await redis.expire("mykey", 60);
+
+const ttl1 = await redis.ttl("mykey");
+console.log(ttl1); // ~60
+
+// Wait some time...
+setTimeout(async () => {
+  const ttl2 = await redis.ttl("mykey");
+  console.log(ttl2); // Less than ttl1
+}, 5000);
+```
+
+## See Also
+
+- [expire](/api/commands/expire) - Set a key's time to live
+- [persist](/api/commands/persist) - Remove the expiration from a key

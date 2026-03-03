@@ -1,0 +1,249 @@
+---
+title: Transactions
+description: Execute multiple commands atomically using MULTI/EXEC transactions
+---
+
+## Overview
+
+Transactions in Upstash Redis allow you to execute multiple commands atomically. All commands in a transaction are serialized and executed sequentially, guaranteeing that they run as a single isolated operation.
+
+<Note>
+The `multi()` method creates a transaction pipeline. Unlike regular pipelines, transactions guarantee atomicity - either all commands succeed or none do.
+</Note>
+
+## Creating a Transaction
+
+Use the `multi()` method to create a transaction:
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+const transaction = redis.multi();
+```
+
+## Basic Usage
+
+### Chaining Commands
+
+You can chain commands together and execute them atomically:
+
+```typescript
+const result = await redis.multi()
+  .set('user:1:name', 'Alice')
+  .set('user:1:email', 'alice@example.com')
+  .set('user:1:age', 30)
+  .exec();
+
+console.log(result); // ['OK', 'OK', 'OK']
+```
+
+### Building Transactions Dynamically
+
+You can build transactions incrementally before executing:
+
+```typescript
+const transaction = redis.multi();
+
+transaction.set('key1', 'value1');
+transaction.incr('counter');
+transaction.get('key1');
+
+const results = await transaction.exec();
+console.log(results); // ['OK', 1, 'value1']
+```
+
+## Type Safety
+
+When chaining commands, TypeScript can infer return types:
+
+```typescript
+const [setResult, incrResult, getResult] = await redis.multi()
+  .set('key', 'value')
+  .incr('counter')
+  .get<string>('key')
+  .exec();
+
+// setResult: 'OK'
+// incrResult: number
+// getResult: string | null
+```
+
+For dynamic transactions, you can specify types manually:
+
+```typescript
+const transaction = redis.multi();
+transaction.get('user:name');
+transaction.get('user:age');
+
+const results = await transaction.exec<[string | null, number | null]>();
+const [name, age] = results;
+```
+
+## Error Handling
+
+### Default Behavior
+
+By default, if any command fails, the entire transaction throws an error:
+
+```typescript
+try {
+  await redis.multi()
+    .set('key', 'value')
+    .hget('key', 'field') // This will fail - key is a string, not a hash
+    .exec();
+} catch (error) {
+  console.error('Transaction failed:', error);
+}
+```
+
+### Keep Errors Mode
+
+To handle errors individually, use the `keepErrors` option:
+
+```typescript
+const results = await redis.multi()
+  .set('key', 'value')
+  .hget('key', 'field') // This will fail
+  .get('key')
+  .exec({ keepErrors: true });
+
+results.forEach((item, index) => {
+  if (item.error) {
+    console.error(`Command ${index} failed:`, item.error);
+  } else {
+    console.log(`Command ${index} result:`, item.result);
+  }
+});
+```
+
+## Practical Examples
+
+### Atomic Counter Update
+
+```typescript
+async function incrementUserScore(userId: string, points: number) {
+  const [newScore, timestamp] = await redis.multi()
+    .incrby(`user:${userId}:score`, points)
+    .set(`user:${userId}:last_update`, Date.now())
+    .exec();
+  
+  return { score: newScore, updated: timestamp };
+}
+```
+
+### Batch User Creation
+
+```typescript
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  created: number;
+}
+
+async function createUser(user: User) {
+  const transaction = redis.multi();
+  
+  transaction.hset(`user:${user.id}`, {
+    name: user.name,
+    email: user.email,
+    created: user.created,
+  });
+  
+  transaction.sadd('users:all', user.id);
+  transaction.sadd(`users:by_email:${user.email}`, user.id);
+  
+  const [hashResult, addToAll, addToEmail] = await transaction.exec();
+  
+  return hashResult === 1; // Returns true if user was created
+}
+```
+
+### Transfer Between Accounts
+
+```typescript
+async function transferFunds(fromAccount: string, toAccount: string, amount: number) {
+  const results = await redis.multi()
+    .decrby(`account:${fromAccount}:balance`, amount)
+    .incrby(`account:${toAccount}:balance`, amount)
+    .lpush('transactions', JSON.stringify({
+      from: fromAccount,
+      to: toAccount,
+      amount,
+      timestamp: Date.now(),
+    }))
+    .exec();
+  
+  const [fromBalance, toBalance, _] = results;
+  
+  return {
+    fromBalance,
+    toBalance,
+  };
+}
+```
+
+### Complex Data Updates
+
+```typescript
+async function updateProduct(productId: string, updates: Record<string, any>) {
+  const transaction = redis.multi();
+  
+  // Update product data
+  transaction.hset(`product:${productId}`, updates);
+  
+  // Update last modified timestamp
+  transaction.hset(`product:${productId}`, { lastModified: Date.now() });
+  
+  // Increment version
+  transaction.hincrby(`product:${productId}`, 'version', 1);
+  
+  // Add to updated products set
+  transaction.sadd('products:recently_updated', productId);
+  
+  const [updateResult, timestampResult, version, addResult] = 
+    await transaction.exec();
+  
+  return { version, updated: true };
+}
+```
+
+## Transaction Length
+
+You can check how many commands are in a transaction before executing:
+
+```typescript
+const transaction = redis.multi();
+
+for (let i = 0; i < 10; i++) {
+  transaction.set(`key:${i}`, i);
+}
+
+console.log(transaction.length()); // 10
+
+const results = await transaction.exec();
+console.log(transaction.length()); // Still 10 after execution
+```
+
+## Important Notes
+
+<Warning>
+Transactions guarantee atomicity but **not** isolation during execution. Other clients' commands can interleave with individual commands within the transaction. For conditional execution based on watched keys, use Redis WATCH/MULTI/EXEC pattern (not directly supported via REST API).
+</Warning>
+
+### Differences from Redis MULTI/EXEC
+
+- Commands are executed via HTTP REST API, not native Redis protocol
+- All commands are sent in a single HTTP request to the `/multi-exec` endpoint
+- WATCH/DISCARD commands are not supported
+- Commands execute atomically on the server side
+
+## See Also
+
+- [Pipelines](/api/pipeline) - Send multiple commands without atomicity guarantees
+- [Error Handling](/advanced/error-handling) - Handle errors in your Redis operations

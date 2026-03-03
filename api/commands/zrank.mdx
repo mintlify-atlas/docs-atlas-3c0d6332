@@ -1,0 +1,136 @@
+---
+title: 'ZRANK'
+description: 'Determine the index of a member in a sorted set'
+---
+
+## Method Signature
+
+```typescript
+zrank(
+  key: string,
+  member: TData
+): Promise<number | null>
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the sorted set
+</ParamField>
+
+<ParamField path="member" type="TData" required>
+  The member whose rank you want to retrieve
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number | null">
+  The rank (0-based index) of the member in the sorted set, ordered from lowest to highest score.
+  
+  Returns `null` if the member does not exist in the sorted set.
+  
+  The member with the lowest score has rank 0.
+</ResponseField>
+
+## Examples
+
+### Get rank of a member
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Add members to a leaderboard
+await redis.zadd(
+  'leaderboard',
+  { score: 100, member: 'player1' },
+  { score: 85, member: 'player2' },
+  { score: 92, member: 'player3' },
+  { score: 78, member: 'player4' }
+);
+
+// Get rank of player2 (score: 85)
+const rank = await redis.zrank('leaderboard', 'player2');
+console.log(rank); // 1 (second lowest score)
+```
+
+### Get rank and calculate position
+
+```typescript
+// Get rank (0-based)
+const rank = await redis.zrank('leaderboard', 'player1');
+
+if (rank !== null) {
+  const position = rank + 1; // Convert to 1-based position
+  console.log(`player1 is in position ${position}`);
+}
+```
+
+### Handle non-existing member
+
+```typescript
+const rank = await redis.zrank('leaderboard', 'nonexistent');
+console.log(rank); // null
+
+if (rank === null) {
+  console.log('Player not found in leaderboard');
+}
+```
+
+### Get reverse rank (highest to lowest)
+
+```typescript
+// To get rank from highest to lowest, calculate from total count
+const totalMembers = await redis.zcard('leaderboard');
+const rank = await redis.zrank('leaderboard', 'player1');
+
+if (rank !== null) {
+  const reverseRank = totalMembers - rank - 1;
+  console.log(`Reverse rank: ${reverseRank}`); // 0 for highest score
+}
+```
+
+### Display leaderboard with ranks
+
+```typescript
+// Get all members with scores
+const members = await redis.zrange('leaderboard', 0, -1, {
+  rev: true,
+  withScores: true,
+});
+
+// Display with calculated positions
+for (let i = 0; i < members.length; i += 2) {
+  const member = members[i];
+  const score = members[i + 1];
+  const rank = await redis.zrank('leaderboard', member);
+  const position = rank !== null ? rank + 1 : 'N/A';
+  
+  console.log(`${position}. ${member}: ${score}`);
+}
+```
+
+### Check if member is in top N
+
+```typescript
+const topN = 10;
+const totalMembers = await redis.zcard('leaderboard');
+const rank = await redis.zrank('leaderboard', 'player1');
+
+if (rank !== null) {
+  const reverseRank = totalMembers - rank - 1;
+  const isInTopN = reverseRank < topN;
+  console.log(`In top ${topN}: ${isInTopN}`);
+}
+```
+
+## Related Commands
+
+- [ZADD](/api/commands/zadd) - Add members to a sorted set
+- [ZSCORE](/api/commands/zscore) - Get the score of a member
+- [ZRANGE](/api/commands/zrange) - Return a range of members
+- [ZCARD](/api/commands/zcard) - Get the number of members

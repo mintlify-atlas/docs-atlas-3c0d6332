@@ -1,0 +1,150 @@
+---
+title: 'HKEYS'
+description: 'Get all field names in a hash'
+---
+
+## Usage
+
+Returns all field names in the hash stored at `key`.
+
+```typescript
+await redis.hkeys(key);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+## Response
+
+<ResponseField name="fields" type="string[]">
+  An array of field names in the hash. Returns an empty array if the key does not exist.
+</ResponseField>
+
+## Examples
+
+### Get all field names
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set hash fields
+await redis.hset('user:1000', {
+  name: 'Alice',
+  email: 'alice@example.com',
+  age: 30,
+  city: 'New York'
+});
+
+// Get all field names
+const fields = await redis.hkeys('user:1000');
+console.log(fields); // ['name', 'email', 'age', 'city']
+```
+
+### Check available fields
+
+```typescript
+const fields = await redis.hkeys('user:1000');
+
+if (fields.includes('email')) {
+  console.log('Email field exists');
+}
+
+if (fields.includes('phone')) {
+  console.log('Phone field exists');
+} else {
+  console.log('Phone field is missing');
+}
+```
+
+### Iterate over fields
+
+```typescript
+const fields = await redis.hkeys('user:1000');
+
+for (const field of fields) {
+  const value = await redis.hget('user:1000', field);
+  console.log(`${field}: ${value}`);
+}
+```
+
+### Get field count
+
+```typescript
+const fields = await redis.hkeys('user:1000');
+console.log(`Total fields: ${fields.length}`);
+```
+
+### Validate schema
+
+```typescript
+const requiredFields = ['name', 'email', 'id'];
+const actualFields = await redis.hkeys('user:1000');
+
+const missingFields = requiredFields.filter(field => !actualFields.includes(field));
+
+if (missingFields.length > 0) {
+  console.log(`Missing required fields: ${missingFields.join(', ')}`);
+}
+```
+
+### Non-existent key
+
+```typescript
+const fields = await redis.hkeys('user:9999');
+console.log(fields); // []
+```
+
+### Filter fields by pattern
+
+```typescript
+// Get all fields
+const allFields = await redis.hkeys('user:1000:settings');
+
+// Filter fields that start with 'notification'
+const notificationFields = allFields.filter(field => field.startsWith('notification'));
+console.log(notificationFields);
+// ['notificationEmail', 'notificationPush', 'notificationSMS']
+```
+
+### Compare field sets
+
+```typescript
+const user1Fields = await redis.hkeys('user:1000');
+const user2Fields = await redis.hkeys('user:2000');
+
+// Find fields unique to user1
+const uniqueToUser1 = user1Fields.filter(field => !user2Fields.includes(field));
+console.log('Unique to user1:', uniqueToUser1);
+```
+
+### Export field names for documentation
+
+```typescript
+const fields = await redis.hkeys('config:app');
+
+console.log('Available configuration fields:');
+fields.forEach(field => {
+  console.log(`- ${field}`);
+});
+```
+
+## Notes
+
+- The order of fields in the returned array is not guaranteed
+- Returns an empty array for non-existent keys
+- Use `HGETALL` if you need both field names and values
+- For very large hashes, consider using `HSCAN` to iterate incrementally
+
+## See Also
+
+- [HVALS](/api/commands/hvals) - Get all values in a hash
+- [HGETALL](/api/commands/hgetall) - Get all fields and values in a hash
+- [HEXISTS](/api/commands/hexists) - Check if a hash field exists

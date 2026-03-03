@@ -1,0 +1,65 @@
+---
+title: SISMEMBER
+description: Check if a member exists in a set
+---
+
+Returns if member is a member of the set stored at key.
+
+## Usage
+
+```typescript
+await redis.sismember(key, member);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The key of the set
+</ParamField>
+
+<ParamField body="member" type="TData" required>
+  The member to check for existence in the set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="0 | 1">
+  Returns `1` if the member exists in the set, `0` otherwise
+</ResponseField>
+
+## Examples
+
+### Check if member exists
+
+```typescript
+await redis.sadd("myset", "hello", "world");
+const exists = await redis.sismember("myset", "hello");
+console.log(exists); // 1
+```
+
+### Check for non-existing member
+
+```typescript
+await redis.sadd("myset", "hello", "world");
+const exists = await redis.sismember("myset", "foo");
+console.log(exists); // 0
+```
+
+### Using in conditionals
+
+```typescript
+const isMember = await redis.sismember("users:premium", "user:123");
+if (isMember === 1) {
+  console.log("User has premium access");
+} else {
+  console.log("User does not have premium access");
+}
+```
+
+### Check membership with custom types
+
+```typescript
+await redis.sadd("numbers", 1, 2, 3, 4, 5);
+const exists = await redis.sismember("numbers", 3);
+console.log(exists); // 1
+```

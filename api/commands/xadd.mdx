@@ -1,0 +1,293 @@
+---
+title: xadd
+description: Add a new entry to a stream
+---
+
+## Usage
+
+```typescript
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: "<UPSTASH_REDIS_URL>",
+  token: "<UPSTASH_REDIS_TOKEN>",
+});
+
+const id = await redis.xadd("events", "*", {
+  user: "alice",
+  action: "login",
+  timestamp: Date.now()
+});
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the stream.
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  The entry ID. Can be:
+  
+  - `"*"` - Fully automatic ID generation (recommended)
+  - `"<ms>-<seq>"` - Explicit ID (e.g., `"1526919030474-55"`)
+  - `"<ms>-*"` - Auto-generate sequence number for the given millisecond timestamp (Redis 8+)
+  
+  IDs must be greater than previous entries in the stream.
+</ParamField>
+
+<ParamField path="entries" type="Record<string, unknown>" required>
+  The field-value pairs to store in the stream entry. Values are automatically serialized to strings.
+</ParamField>
+
+<ParamField path="options" type="XAddCommandOptions">
+  Optional configuration:
+  
+  <Expandable title="options">
+    <ParamField path="nomkStream" type="boolean">
+      Don't create the stream if it doesn't exist. Returns `null` if the stream doesn't exist.
+    </ParamField>
+    
+    <ParamField path="trim" type="object">
+      Automatically trim the stream to limit its size:
+      
+      <Expandable title="trim by maximum length">
+        ```typescript
+        {
+          type: "MAXLEN" | "maxlen",
+          threshold: number,
+          comparison: "=" | "~",
+          limit?: number  // Only with "~"
+        }
+        ```
+        
+        Trim to keep at most `threshold` entries.
+      </Expandable>
+      
+      <Expandable title="trim by minimum ID">
+        ```typescript
+        {
+          type: "MINID" | "minid",
+          threshold: string,
+          comparison: "=" | "~",
+          limit?: number  // Only with "~"
+        }
+        ```
+        
+        Trim to remove entries older than `threshold` ID.
+      </Expandable>
+      
+      - `comparison: "="` - Exact trimming (slower)
+      - `comparison: "~"` - Approximate trimming (faster, recommended)
+      - `limit` - Maximum number of entries to trim (only with `"~"`)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="string">
+  The ID of the added entry (e.g., `"1526919030474-0"`).
+  
+  Returns `null` if `nomkStream: true` and the stream doesn't exist.
+</ResponseField>
+
+## Examples
+
+### Add entry with automatic ID
+
+```typescript
+const id = await redis.xadd("user-events", "*", {
+  userId: "123",
+  action: "page_view",
+  page: "/dashboard"
+});
+
+console.log(id);
+// Returns: "1678901234567-0"
+```
+
+### Add multiple entries
+
+```typescript
+const ids = await Promise.all([
+  redis.xadd("logs", "*", { level: "info", message: "Server started" }),
+  redis.xadd("logs", "*", { level: "warn", message: "High memory usage" }),
+  redis.xadd("logs", "*", { level: "error", message: "Connection failed" })
+]);
+
+console.log(ids);
+// Returns: [
+//   "1678901234567-0",
+//   "1678901234568-0",
+//   "1678901234569-0"
+// ]
+```
+
+### Store complex data
+
+```typescript
+const event = {
+  userId: 42,
+  action: "purchase",
+  product: "premium-plan",
+  amount: 99.99,
+  metadata: JSON.stringify({ referral: "email", campaign: "spring-sale" })
+};
+
+const id = await redis.xadd("purchases", "*", event);
+```
+
+### Use explicit ID
+
+```typescript
+// Use current timestamp with sequence 0
+const timestamp = Date.now();
+const id = await redis.xadd("events", `${timestamp}-0`, {
+  type: "custom",
+  data: "test"
+});
+```
+
+### Trim stream by maximum length
+
+```typescript
+// Keep only the most recent 1000 entries
+const id = await redis.xadd(
+  "events",
+  "*",
+  { user: "alice", action: "click" },
+  {
+    trim: {
+      type: "MAXLEN",
+      comparison: "~",  // Approximate trimming (efficient)
+      threshold: 1000
+    }
+  }
+);
+```
+
+### Trim stream by minimum ID
+
+```typescript
+// Remove entries older than 1 hour
+const oneHourAgo = Date.now() - (60 * 60 * 1000);
+const id = await redis.xadd(
+  "events",
+  "*",
+  { user: "bob", action: "logout" },
+  {
+    trim: {
+      type: "MINID",
+      comparison: "~",
+      threshold: `${oneHourAgo}-0`
+    }
+  }
+);
+```
+
+### Don't create stream if it doesn't exist
+
+```typescript
+const id = await redis.xadd(
+  "maybe-exists",
+  "*",
+  { data: "test" },
+  { nomkStream: true }
+);
+
+if (id === null) {
+  console.log("Stream doesn't exist");
+} else {
+  console.log(`Added with ID: ${id}`);
+}
+```
+
+### Limit trimming operations
+
+```typescript
+// Trim at most 100 entries per operation
+const id = await redis.xadd(
+  "events",
+  "*",
+  { user: "charlie", action: "update" },
+  {
+    trim: {
+      type: "MAXLEN",
+      comparison: "~",
+      threshold: 1000,
+      limit: 100  // Don't trim more than 100 in one operation
+    }
+  }
+);
+```
+
+## Stream IDs Explained
+
+### Format
+
+Stream IDs have the format: `<milliseconds>-<sequence>`
+
+- `milliseconds` - Unix timestamp in milliseconds
+- `sequence` - Sequence number for entries added in the same millisecond
+
+Example: `1678901234567-0`
+- Timestamp: 1678901234567 (March 15, 2023)
+- Sequence: 0 (first entry in that millisecond)
+
+### Automatic Generation
+
+Using `"*"` automatically generates an ID:
+
+```typescript
+const id1 = await redis.xadd("stream", "*", { data: "first" });
+const id2 = await redis.xadd("stream", "*", { data: "second" });
+
+// If added in the same millisecond:
+// id1: "1678901234567-0"
+// id2: "1678901234567-1"  (sequence incremented)
+
+// If added in different milliseconds:
+// id1: "1678901234567-0"
+// id2: "1678901234568-0"  (new timestamp, sequence reset)
+```
+
+### ID Ordering
+
+IDs must always increase:
+
+```typescript
+// ✅ Valid - IDs increase
+await redis.xadd("stream", "1000-0", { data: "first" });
+await redis.xadd("stream", "1000-1", { data: "second" });
+await redis.xadd("stream", "1001-0", { data: "third" });
+
+// ❌ Error - ID must be greater than last entry
+await redis.xadd("stream", "1001-0", { data: "fourth" });
+await redis.xadd("stream", "1000-5", { data: "fifth" });  // Error!
+```
+
+## Important Notes
+
+### Trimming Performance
+
+- Use `comparison: "~"` (approximate) for better performance
+- Exact trimming (`"="`) may block for large deletions
+- Set `limit` to prevent long blocking operations
+
+### Memory Management
+
+Without trimming, streams grow indefinitely. Consider:
+
+```typescript
+// Time-based retention (keep last 24 hours)
+const yesterday = Date.now() - (24 * 60 * 60 * 1000);
+await redis.xadd("events", "*", data, {
+  trim: { type: "MINID", comparison: "~", threshold: `${yesterday}-0` }
+});
+
+// Size-based retention (keep last 10,000 entries)
+await redis.xadd("events", "*", data, {
+  trim: { type: "MAXLEN", comparison: "~", threshold: 10000 }
+});
+```

@@ -1,0 +1,363 @@
+---
+title: Lua Scripts
+description: Execute Lua scripts with eval, evalsha, fcall and the Script helper classes
+---
+
+## Overview
+
+The Upstash Redis SDK provides multiple ways to execute Lua scripts:
+
+- **Direct execution**: `eval`, `evalsha`, `evalRo`, `evalshaRo`
+- **Script helpers**: `Script` and `ScriptRO` classes for automatic caching
+- **Functions**: `fcall` and `fcallRo` for Redis Functions (Redis 7.0+)
+
+## Direct Script Execution
+
+### EVAL Command
+
+Execute a Lua script directly:
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+const script = `
+  local key = KEYS[1]
+  local value = ARGV[1]
+  redis.call('SET', key, value)
+  return redis.call('GET', key)
+`;
+
+const result = await redis.eval<string>(
+  script,
+  ['mykey'],      // KEYS
+  ['myvalue']     // ARGV
+);
+
+console.log(result); // 'myvalue'
+```
+
+### Type Parameters
+
+Specify return types for better type safety:
+
+```typescript
+// Returns a string
+const text = await redis.eval<string>(
+  'return ARGV[1]',
+  [],
+  ['Hello World']
+);
+
+// Returns a number
+const number = await redis.eval<number>(
+  'return tonumber(ARGV[1])',
+  [],
+  ['42']
+);
+
+// Returns an array
+const array = await redis.eval<string[]>(
+  'return {ARGV[1], ARGV[2], ARGV[3]}',
+  [],
+  ['a', 'b', 'c']
+);
+
+// Returns an object
+interface Result {
+  count: number;
+  items: string[];
+}
+
+const result = await redis.eval<Result>(
+  `
+    local count = redis.call('LLEN', KEYS[1])
+    local items = redis.call('LRANGE', KEYS[1], 0, -1)
+    return {count = count, items = items}
+  `,
+  ['mylist'],
+  []
+);
+```
+
+### EVALSHA Command
+
+Execute a script by its SHA1 hash (must be loaded first):
+
+```typescript
+const script = 'return ARGV[1]';
+
+// First, load the script
+const sha1 = await redis.scriptLoad(script);
+
+// Then execute it by hash
+const result = await redis.evalsha<string>(
+  sha1,
+  [],
+  ['Hello']
+);
+```
+
+### Read-Only Variants
+
+Use `evalRo` and `evalshaRo` for read-only scripts (available in cluster mode):
+
+```typescript
+const result = await redis.evalRo<number>(
+  'return redis.call("GET", KEYS[1])',
+  ['counter'],
+  []
+);
+```
+
+## Script Helper Classes
+
+### Script Class
+
+The `Script` class provides automatic script caching and optimistic execution:
+
+```typescript
+const script = redis.createScript<string>(
+  'return ARGV[1]'
+);
+
+const result = await script.exec([], ['Hello World']);
+console.log(result); // 'Hello World'
+```
+
+#### How It Works
+
+1. **First execution**: Tries `EVALSHA` (optimistic)
+2. **If script not cached**: Falls back to `EVAL` and caches it
+3. **Subsequent executions**: Uses cached `EVALSHA`
+
+#### Script Methods
+
+```typescript
+const script = redis.createScript<string[]>(
+  `
+    local keys = {}
+    for i, key in ipairs(KEYS) do
+      table.insert(keys, key)
+    end
+    return keys
+  `
+);
+
+// Direct EVAL execution
+const result1 = await script.eval(['key1', 'key2'], []);
+
+// Direct EVALSHA execution (throws if not loaded)
+try {
+  const result2 = await script.evalsha(['key1', 'key2'], []);
+} catch (error) {
+  console.error('Script not loaded');
+}
+
+// Optimistic execution (recommended)
+const result3 = await script.exec(['key1', 'key2'], []);
+```
+
+#### SHA1 Hash
+
+```typescript
+const script = redis.createScript(
+  'return "Hello World"'
+);
+
+// Wait for hash computation (asynchronous)
+await new Promise(resolve => setTimeout(resolve, 0));
+
+console.log(script.sha1); // Computed SHA1 hash
+```
+
+<Warning>
+The `sha1` property is deprecated and initialized asynchronously. Avoid using it immediately after creating the script.
+</Warning>
+
+### ScriptRO Class (Read-Only)
+
+For read-only scripts, use the `ScriptRO` class:
+
+```typescript
+const script = redis.createScript<string>(
+  'return redis.call("GET", KEYS[1])',
+  { readonly: true }
+);
+
+// Only read-only methods are available
+const result = await script.exec(['mykey'], []);
+```
+
+## Practical Script Examples
+
+### Atomic Increment with Limit
+
+```typescript
+const incrementWithLimit = redis.createScript<number>(`
+  local key = KEYS[1]
+  local max = tonumber(ARGV[1])
+  local current = tonumber(redis.call('GET', key) or '0')
+  
+  if current < max then
+    return redis.call('INCR', key)
+  else
+    return current
+  end
+`);
+
+const newValue = await incrementWithLimit.exec(
+  ['counter'],
+  ['100'] // Max value
+);
+```
+
+### Conditional Set
+
+```typescript
+const conditionalSet = redis.createScript<'OK' | null>(`
+  local key = KEYS[1]
+  local newValue = ARGV[1]
+  local condition = ARGV[2]
+  local expectedValue = ARGV[3]
+  
+  local current = redis.call('GET', key)
+  
+  if condition == 'eq' and current == expectedValue then
+    return redis.call('SET', key, newValue)
+  elseif condition == 'ne' and current ~= expectedValue then
+    return redis.call('SET', key, newValue)
+  elseif condition == 'nx' and not current then
+    return redis.call('SET', key, newValue)
+  end
+  
+  return nil
+`);
+
+const result = await conditionalSet.exec(
+  ['mykey'],
+  ['newValue', 'eq', 'expectedValue']
+);
+```
+
+### Batch Operations
+
+```typescript
+const batchGet = redis.createScript<Record<string, string>>(`
+  local result = {}
+  for i, key in ipairs(KEYS) do
+    result[key] = redis.call('GET', key)
+  end
+  return cjson.encode(result)
+`);
+
+const values = await batchGet.exec(
+  ['key1', 'key2', 'key3'],
+  []
+);
+```
+
+### Rate Limiting
+
+```typescript
+const rateLimiter = redis.createScript<[number, number]>(`
+  local key = KEYS[1]
+  local limit = tonumber(ARGV[1])
+  local window = tonumber(ARGV[2])
+  
+  local current = tonumber(redis.call('GET', key) or '0')
+  
+  if current < limit then
+    local newCount = redis.call('INCR', key)
+    if newCount == 1 then
+      redis.call('EXPIRE', key, window)
+    end
+    local ttl = redis.call('TTL', key)
+    return {newCount, ttl}
+  else
+    local ttl = redis.call('TTL', key)
+    return {current, ttl}
+  end
+`);
+
+const [count, ttl] = await rateLimiter.exec(
+  ['rate:user:123'],
+  ['10', '60'] // 10 requests per 60 seconds
+);
+
+if (count <= 10) {
+  console.log(`Request allowed. ${count}/10 used. Resets in ${ttl}s`);
+} else {
+  console.log(`Rate limit exceeded. Try again in ${ttl}s`);
+}
+```
+
+## Redis Functions (7.0+)
+
+### FCALL Command
+
+Execute a loaded Redis Function:
+
+```typescript
+// First, load a function library
+await redis.functions.load(`
+  #!lua name=mylib
+  
+  redis.register_function('hello', function(keys, args)
+    return 'Hello ' .. args[1]
+  end)
+`);
+
+// Call the function
+const result = await redis.functions.call<string>(
+  'hello',
+  [],          // keys
+  ['World']    // args
+);
+
+console.log(result); // 'Hello World'
+```
+
+### Read-Only Function Calls
+
+```typescript
+const result = await redis.functions.callRo<string>(
+  'myReadOnlyFunc',
+  ['key1'],
+  ['arg1']
+);
+```
+
+### Managing Functions
+
+```typescript
+// List all functions
+const functions = await redis.functions.list();
+
+// Delete a function library
+await redis.functions.delete('mylib');
+
+// Flush all functions
+await redis.functions.flush();
+
+// Get function statistics
+const stats = await redis.functions.stats();
+```
+
+## Best Practices
+
+1. **Use Script helpers for frequently executed scripts** - They provide automatic caching
+2. **Keep scripts simple** - Complex logic is better handled in application code
+3. **Prefer read-only variants** when possible - Better for clustering and replication
+4. **Type your results** - Use TypeScript generics for type safety
+5. **Handle errors gracefully** - Scripts can fail due to syntax or runtime errors
+
+## See Also
+
+- [Redis EVAL documentation](https://redis.io/commands/eval)
+- [Redis Functions documentation](https://redis.io/docs/manual/programmability/functions-intro/)
+- [Error Handling](/advanced/error-handling)

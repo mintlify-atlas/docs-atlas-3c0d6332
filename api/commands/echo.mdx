@@ -1,0 +1,66 @@
+---
+title: echo
+description: Echo a message
+---
+
+## Description
+
+Returns the provided message. This command is useful for testing and debugging.
+
+## Method Signature
+
+```typescript
+echo(message: string): Promise<string>
+```
+
+## Parameters
+
+<ParamField path="message" type="string" required>
+  The message to echo back
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="string">
+  The exact message that was sent
+</ResponseField>
+
+## Examples
+
+### Basic echo
+
+```typescript
+const response = await redis.echo("Hello, Redis!");
+console.log(response); // "Hello, Redis!"
+```
+
+### Echo with special characters
+
+```typescript
+const response = await redis.echo("Line 1\nLine 2\nLine 3");
+console.log(response);
+// Output:
+// Line 1
+// Line 2
+// Line 3
+```
+
+### Test connection with custom message
+
+```typescript
+const testMessage = `Test at ${new Date().toISOString()}`;
+const response = await redis.echo(testMessage);
+console.log(response === testMessage); // true
+```
+
+### Echo empty string
+
+```typescript
+const response = await redis.echo("");
+console.log(response); // ""
+console.log(response.length); // 0
+```
+
+## See Also
+
+- [ping](/api/commands/ping) - Test server connection

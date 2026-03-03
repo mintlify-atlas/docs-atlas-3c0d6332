@@ -1,0 +1,75 @@
+---
+title: SUNION
+description: Get the union of multiple sets
+---
+
+Returns the members of the set resulting from the union of all the given sets. Keys that do not exist are considered to be empty sets.
+
+## Usage
+
+```typescript
+await redis.sunion(key, ...keys);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The first set key
+</ParamField>
+
+<ParamField body="keys" type="string[]">
+  Additional set keys to union with
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="TData[]">
+  An array containing the members of the resulting set (union of all sets)
+</ResponseField>
+
+## Examples
+
+### Union of two sets
+
+```typescript
+await redis.sadd("set1", "a", "b", "c");
+await redis.sadd("set2", "c", "d", "e");
+
+const result = await redis.sunion("set1", "set2");
+console.log(result); // ["a", "b", "c", "d", "e"]
+```
+
+### Union of multiple sets
+
+```typescript
+await redis.sadd("skills:alice", "javascript", "python");
+await redis.sadd("skills:bob", "python", "go");
+await redis.sadd("skills:charlie", "java", "javascript");
+
+const allSkills = await redis.sunion(
+  "skills:alice",
+  "skills:bob",
+  "skills:charlie"
+);
+console.log(allSkills); // ["javascript", "python", "go", "java"]
+```
+
+### Combine tag sets
+
+```typescript
+await redis.sadd("tags:frontend", "react", "vue", "angular");
+await redis.sadd("tags:backend", "node", "django", "rails");
+
+const allTags = await redis.sunion("tags:frontend", "tags:backend");
+console.log(allTags);
+// ["react", "vue", "angular", "node", "django", "rails"]
+```
+
+### Union with non-existing set
+
+```typescript
+await redis.sadd("set1", "a", "b", "c");
+
+const result = await redis.sunion("set1", "nonexistent");
+console.log(result); // ["a", "b", "c"]
+```

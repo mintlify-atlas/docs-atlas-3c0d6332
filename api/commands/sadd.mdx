@@ -1,0 +1,63 @@
+---
+title: SADD
+description: Add one or more members to a set
+---
+
+Add one or more members to a set stored at key. Members that already exist in the set are ignored. If the key does not exist, a new set is created.
+
+## Usage
+
+```typescript
+await redis.sadd(key, member, ...members);
+```
+
+## Parameters
+
+<ParamField body="key" type="string" required>
+  The key of the set
+</ParamField>
+
+<ParamField body="member" type="TData" required>
+  The first member to add to the set
+</ParamField>
+
+<ParamField body="members" type="TData[]">
+  Additional members to add to the set
+</ParamField>
+
+## Response
+
+<ResponseField name="result" type="number">
+  The number of elements that were added to the set, not including elements already present
+</ResponseField>
+
+## Examples
+
+### Add a single member
+
+```typescript
+const result = await redis.sadd("myset", "hello");
+console.log(result); // 1
+```
+
+### Add multiple members
+
+```typescript
+const result = await redis.sadd("fruits", "apple", "banana", "orange");
+console.log(result); // 3
+```
+
+### Add duplicate members
+
+```typescript
+await redis.sadd("colors", "red", "blue");
+const result = await redis.sadd("colors", "red", "green");
+console.log(result); // 1 (only "green" was added)
+```
+
+### Using with custom types
+
+```typescript
+const result = await redis.sadd("numbers", 1, 2, 3, 4, 5);
+console.log(result); // 5
+```

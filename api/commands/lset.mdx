@@ -1,0 +1,189 @@
+---
+title: 'LSET'
+description: 'Set the value of an element in a list by index'
+---
+
+## Overview
+
+Sets the list element at `index` to `value`. The index is zero-based. An error is returned for out of range indexes.
+
+## Method Signature
+
+```typescript
+lset<TData = string>(key: string, index: number, value: TData): Promise<"OK">
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the list.
+</ParamField>
+
+<ParamField path="index" type="number" required>
+  The index of the element to set (zero-based). Negative indices count from the end of the list (e.g., `-1` is the last element, `-2` is the second-to-last).
+</ParamField>
+
+<ParamField path="value" type="TData" required>
+  The new value to set at the specified index.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="result" type="'OK'">
+  Returns `"OK"` on success. Throws an error if the index is out of range or the key does not exist.
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Set up a list
+await redis.rpush('mylist', 'one', 'two', 'three');
+
+// Update element at index 1
+const result = await redis.lset('mylist', 1, 'TWO');
+console.log(result); // 'OK'
+
+// Verify the change
+const updated = await redis.lindex('mylist', 1);
+console.log(updated); // 'TWO'
+```
+
+### Using Negative Indexes
+
+```typescript
+await redis.rpush('items', 'A', 'B', 'C', 'D');
+
+// Update the last element
+await redis.lset('items', -1, 'Z');
+
+// Update the second-to-last element
+await redis.lset('items', -2, 'Y');
+
+const list = await redis.lrange('items', 0, -1);
+console.log(list); // ['A', 'B', 'Y', 'Z']
+```
+
+### Working with Objects
+
+```typescript
+interface Task {
+  id: string;
+  title: string;
+  status: 'pending' | 'completed';
+}
+
+// Add tasks
+await redis.rpush<Task>('tasks',
+  { id: '1', title: 'Write docs', status: 'pending' },
+  { id: '2', title: 'Review code', status: 'pending' }
+);
+
+// Update a task
+const updatedTask: Task = {
+  id: '1',
+  title: 'Write docs',
+  status: 'completed'
+};
+
+await redis.lset<Task>('tasks', 0, updatedTask);
+```
+
+### Error Handling
+
+```typescript
+try {
+  // This will throw an error if the index is out of range
+  await redis.lset('mylist', 100, 'value');
+} catch (error) {
+  console.error('Failed to set element:', error);
+}
+
+// Check list length before setting
+const length = await redis.llen('mylist');
+const index = 5;
+
+if (index < length) {
+  await redis.lset('mylist', index, 'new value');
+} else {
+  console.log('Index out of range');
+}
+```
+
+### Updating Specific Fields
+
+```typescript
+interface Config {
+  version: string;
+  enabled: boolean;
+  settings: Record<string, any>;
+}
+
+// Get current config
+const currentConfig = await redis.lindex<Config>('configs', 0);
+
+if (currentConfig) {
+  // Update the config
+  const updatedConfig: Config = {
+    ...currentConfig,
+    enabled: false,
+    version: '2.0.0'
+  };
+  
+  await redis.lset<Config>('configs', 0, updatedConfig);
+}
+```
+
+### Batch Updates
+
+```typescript
+// Update multiple elements
+const updates = [
+  { index: 0, value: 'updated-0' },
+  { index: 2, value: 'updated-2' },
+  { index: 4, value: 'updated-4' }
+];
+
+for (const { index, value } of updates) {
+  await redis.lset('mylist', index, value);
+}
+```
+
+### Toggle Values
+
+```typescript
+// Toggle a boolean value in a list
+const index = 0;
+const current = await redis.lindex('flags', index);
+const newValue = current === 'true' ? 'false' : 'true';
+await redis.lset('flags', index, newValue);
+```
+
+### Replacing Queue Items
+
+```typescript
+// Replace a failed job with a retry
+const failedIndex = 0;
+const job = await redis.lindex('queue:failed', failedIndex);
+
+if (job) {
+  // Modify job to retry
+  const retryJob = { ...job, retryCount: (job.retryCount || 0) + 1 };
+  await redis.lset('queue:failed', failedIndex, retryJob);
+}
+```
+
+## See Also
+
+- [LINDEX](/api/commands/lindex) - Get an element from a list by index
+- [LRANGE](/api/commands/lrange) - Get a range of elements from a list
+- [LLEN](/api/commands/llen) - Get the length of a list
+- [LPUSH](/api/commands/lpush) - Insert elements at the head of a list

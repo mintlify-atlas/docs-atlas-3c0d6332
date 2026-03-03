@@ -1,0 +1,71 @@
+---
+title: 'HGET'
+description: 'Get the value of a hash field'
+---
+
+## Usage
+
+Returns the value associated with `field` in the hash stored at `key`.
+
+```typescript
+await redis.hget(key, field);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+<ParamField path="field" type="string" required>
+  The field in the hash to get
+</ParamField>
+
+## Response
+
+<ResponseField name="value" type="TData | null">
+  The value associated with the field, or `null` when the field is not present in the hash or the key does not exist.
+</ResponseField>
+
+## Examples
+
+### Get a hash field value
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Set a hash field
+await redis.hset('user:1000', { name: 'Alice', email: 'alice@example.com' });
+
+// Get a specific field
+const name = await redis.hget('user:1000', 'name');
+console.log(name); // 'Alice'
+
+// Get a non-existent field
+const age = await redis.hget('user:1000', 'age');
+console.log(age); // null
+```
+
+### Working with typed data
+
+```typescript
+interface User {
+  name: string;
+  email: string;
+}
+
+// Get with type inference
+const email = await redis.hget<string>('user:1000', 'email');
+console.log(email); // 'alice@example.com'
+```
+
+## See Also
+
+- [HSET](/api/commands/hset) - Set hash field values
+- [HGETALL](/api/commands/hgetall) - Get all fields and values in a hash
+- [HMGET](/api/commands/hmget) - Get multiple hash field values

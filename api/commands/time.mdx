@@ -1,0 +1,104 @@
+---
+title: time
+description: Get the server time
+---
+
+## Description
+
+Returns the current server time as a tuple of Unix timestamp and microseconds.
+
+## Method Signature
+
+```typescript
+time(): Promise<[number, number]>
+```
+
+## Parameters
+
+This command takes no parameters.
+
+## Return Value
+
+<ResponseField name="result" type="[number, number]">
+  A tuple containing:
+  1. **Unix timestamp** - Current server time in seconds since Unix epoch
+  2. **Microseconds** - Microseconds component of the current time
+</ResponseField>
+
+## Examples
+
+### Get server time
+
+```typescript
+const [seconds, microseconds] = await redis.time();
+console.log(`Seconds: ${seconds}`);
+console.log(`Microseconds: ${microseconds}`);
+```
+
+### Convert to JavaScript Date
+
+```typescript
+const [seconds, microseconds] = await redis.time();
+const milliseconds = seconds * 1000 + Math.floor(microseconds / 1000);
+const date = new Date(milliseconds);
+
+console.log(date.toISOString());
+```
+
+### Calculate timestamp with microsecond precision
+
+```typescript
+const [seconds, microseconds] = await redis.time();
+const timestamp = seconds + microseconds / 1_000_000;
+console.log(`Timestamp: ${timestamp}`);
+```
+
+### Measure server time difference
+
+```typescript
+const [sec1, micro1] = await redis.time();
+
+// Do some operations...
+await redis.set("key", "value");
+await redis.get("key");
+
+const [sec2, micro2] = await redis.time();
+
+const elapsed = (sec2 - sec1) * 1_000_000 + (micro2 - micro1);
+console.log(`Elapsed: ${elapsed} microseconds`);
+console.log(`Elapsed: ${elapsed / 1000} milliseconds`);
+```
+
+### Compare server time with client time
+
+```typescript
+const clientTime = Date.now();
+const [seconds, microseconds] = await redis.time();
+const serverTime = seconds * 1000 + Math.floor(microseconds / 1000);
+
+const drift = Math.abs(serverTime - clientTime);
+console.log(`Time drift: ${drift}ms`);
+
+if (drift > 1000) {
+  console.warn("Server and client clocks differ by more than 1 second");
+}
+```
+
+### Use for unique IDs
+
+```typescript
+const [seconds, microseconds] = await redis.time();
+const uniqueId = `${seconds}${microseconds.toString().padStart(6, '0')}`;
+console.log(uniqueId); // e.g., "1709472123456789"
+```
+
+## Use Cases
+
+- **Clock synchronization** - Compare server and client times
+- **Distributed timestamps** - Get consistent time across multiple clients
+- **Benchmarking** - Measure operation duration with microsecond precision
+- **Unique ID generation** - Create time-based unique identifiers
+
+## See Also
+
+- [ping](/api/commands/ping) - Test server connection

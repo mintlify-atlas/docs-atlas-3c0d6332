@@ -1,0 +1,159 @@
+---
+title: 'HINCRBY'
+description: 'Increment a hash field by a number'
+---
+
+## Usage
+
+Increments the number stored at `field` in the hash stored at `key` by `increment`. If the field does not exist, it is set to 0 before performing the operation.
+
+```typescript
+await redis.hincrby(key, field, increment);
+```
+
+## Parameters
+
+<ParamField path="key" type="string" required>
+  The key of the hash
+</ParamField>
+
+<ParamField path="field" type="string" required>
+  The field in the hash to increment
+</ParamField>
+
+<ParamField path="increment" type="number" required>
+  The increment value. Can be positive or negative to increment or decrement the field.
+</ParamField>
+
+## Response
+
+<ResponseField name="value" type="number">
+  The value of the field after the increment operation.
+</ResponseField>
+
+## Examples
+
+### Increment a counter
+
+```typescript
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Initialize counter
+await redis.hset('user:1000:stats', { loginCount: 0 });
+
+// Increment login counter
+const newCount = await redis.hincrby('user:1000:stats', 'loginCount', 1);
+console.log(newCount); // 1
+
+// Increment again
+const count2 = await redis.hincrby('user:1000:stats', 'loginCount', 1);
+console.log(count2); // 2
+```
+
+### Increment non-existent field
+
+```typescript
+// Field doesn't exist, starts at 0
+const views = await redis.hincrby('article:500', 'views', 1);
+console.log(views); // 1
+```
+
+### Decrement by using negative increment
+
+```typescript
+// Set initial inventory
+await redis.hset('product:200', { inventory: 100 });
+
+// Decrease inventory by 5
+const remaining = await redis.hincrby('product:200', 'inventory', -5);
+console.log(remaining); // 95
+```
+
+### Track multiple metrics
+
+```typescript
+// Track user activity metrics
+await redis.hincrby('user:1000:activity', 'postsCreated', 1);
+await redis.hincrby('user:1000:activity', 'commentsCreated', 1);
+await redis.hincrby('user:1000:activity', 'likesGiven', 1);
+
+const activity = await redis.hgetall('user:1000:activity');
+console.log(activity);
+// { postsCreated: 1, commentsCreated: 1, likesGiven: 1 }
+```
+
+### Implement rate limiting
+
+```typescript
+const incrementApiCall = async (userId: string): Promise<number> => {
+  const key = `ratelimit:${userId}:${Date.now() / 1000 / 60 | 0}`; // per minute
+  return await redis.hincrby(key, 'requests', 1);
+};
+
+const requests = await incrementApiCall('user:1000');
+if (requests > 100) {
+  console.log('Rate limit exceeded');
+}
+```
+
+### Track votes or scores
+
+```typescript
+// Upvote a post
+await redis.hincrby('post:1000', 'upvotes', 1);
+
+// Downvote a post
+await redis.hincrby('post:1000', 'downvotes', 1);
+
+// Calculate score
+const post = await redis.hgetall('post:1000');
+const score = (post?.upvotes || 0) - (post?.downvotes || 0);
+console.log(`Score: ${score}`);
+```
+
+### Increment by larger amounts
+
+```typescript
+// Add points to user score
+await redis.hincrby('user:1000:score', 'points', 100);
+
+// Bonus points
+await redis.hincrby('user:1000:score', 'points', 500);
+
+const totalPoints = await redis.hget('user:1000:score', 'points');
+console.log(totalPoints); // 600
+```
+
+### Analytics tracking
+
+```typescript
+// Track daily page views
+const today = new Date().toISOString().split('T')[0];
+await redis.hincrby('analytics:pageviews', today, 1);
+
+// Track by page
+await redis.hincrby('analytics:pages', '/home', 1);
+await redis.hincrby('analytics:pages', '/about', 1);
+
+const pageStats = await redis.hgetall('analytics:pages');
+console.log(pageStats); // { '/home': 1, '/about': 1 }
+```
+
+## Notes
+
+- The operation is atomic
+- If the hash or field doesn't exist, it's created with the field set to 0 before incrementing
+- Only works with integer values
+- For floating-point increments, use `HINCRBYFLOAT`
+- An error is returned if the field contains a value of the wrong type or a string that cannot be represented as an integer
+
+## See Also
+
+- [HSET](/api/commands/hset) - Set hash field values
+- [HGET](/api/commands/hget) - Get a hash field value
+- [HINCRBY](/api/commands/hincrby) - Increment a hash field
